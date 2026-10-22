@@ -158,6 +158,8 @@ KEYWORDS: dict[str, T] = {
     "GTFO": T.BREAK,
     "WIN": T.WIN,
     "FAIL": T.FAIL,
+    "WAZZUP": T.WAZZUP,
+    "BUHBYE": T.BUHBYE,
     "BTW": T.BTW,
     "OBTW": T.OBTW,
     "TLDR": T.TLDR,
