@@ -1,0 +1,9 @@
+HAI
+
+I HAS A i ITZ 1
+
+IM IN YR counter UPPIN YR i TIL BOTH SAEM i AN 6
+    VISIBLE i
+IM OUTTA YR counter
+
+KTHXBYE
