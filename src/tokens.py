@@ -7,7 +7,7 @@ references: https://docs.python.org/3/library/dataclasses.html
 from dataclasses import dataclass
 from enum import Enum, auto
 
-class T:
+class T(Enum):
     EOF = auto()
     NEWLINE = auto()
     COMMA = auto()  # treat it like NEWLINE
