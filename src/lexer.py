@@ -31,11 +31,11 @@ def tokenize(code: str) -> list[Token]:
     print(code)
 
     for lexeme in code:
-        line += 1
             
         # tokenize statement terminators (newline)
         if lexeme == '\n':
             tokens.append(Token(T.NEWLINE, lexeme, line))
+            line += 1
             continue
 
         # tokenize literals
