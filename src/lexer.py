@@ -23,7 +23,7 @@ def tokenize(code: str) -> list[Token]:
     print(code)
     for word in code:
         if word == '\n':
-            tokens.append(Token(word, KEYWORDS[word], line))
+            tokens.append(Token(word, T.NEWLINE, line))
             line += 1
             continue
 
