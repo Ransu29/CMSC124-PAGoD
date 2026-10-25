@@ -1,33 +1,34 @@
-CODE = """
-HAI
-VISIBLE "Hi"
-KTHXBYE
-"""
+import re
+from tokens import *
 
-TOKEN_TYPE = {
-    "HAI": "KEYWORD",
-    "VISIBLE": "KEYWORD",
-    "KTHXBYE": "KEYWORD"
-}
+# https://dev.to/frederikgramkortegaard/writing-your-first-compiler-part-3-lexical-analysis-4nn2
 
-TOKENS = []
+# Regex for identifier
+IDEN = re.compile(r'^[a-zA-Z][a-zA-Z0-9_]*$ ')
 
-class Token:
-    def __init__(self, type, value, line, column):
-        self.type = type
-        self.value = value
-        self.line = line
-        self.column = column
+# Regex for literals
+NUMBR = re.compile(r'^-?[0-9]+$')
+NUMBAR = re.compile(r'^-?[0-9]+\.[0-9]+$')
+YARN = re.compile(r'^"[^"]*"$')
+TROOF = re.compile(r'^(WIN|FAIL)$')
+TYPE = re.compile(r'^(NOOB|NUMBR|NUMBAR|YARN|TROOF)$')
+NEWLINE = re.compile(r"(,\n|\n)")
+
+def tokenize(code: str) -> list[Token]:
+    tokens = []
+    line = 0
+
+    code = NEWLINE.split(code)
+
+    print(code)
+    for word in code:
+        if word == '\n':
+            tokens.append(Token(word, KEYWORDS[word], line))
+            line += 1
+
+    return tokens
+
+    
 
 
-def lexer(code):
-    code = code.replace(",", "\n").split("\n") 
 
-    for line_index, line in enumerate(code):
-        line = line.split()
-        for col_index, item in enumerate(line):
-            item_type = TOKEN_TYPE.get(item)
-            t = Token(item_type, item, line_index, col_index)
-            TOKENS.append(t) 
-
-print(TOKENS)
