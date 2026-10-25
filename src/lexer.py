@@ -12,7 +12,7 @@ NUMBAR = re.compile(r'^-?[0-9]+\.[0-9]+$')
 YARN = re.compile(r'^"[^"]*"$')
 TROOF = re.compile(r'^(WIN|FAIL)$')
 TYPE = re.compile(r'^(NOOB|NUMBR|NUMBAR|YARN|TROOF)$')
-NEWLINE = re.compile(r"(,\n|\n)")
+NEWLINE = re.compile(r"(\n)")
 
 def tokenize(code: str) -> list[Token]:
     tokens = []
@@ -25,6 +25,9 @@ def tokenize(code: str) -> list[Token]:
         if word == '\n':
             tokens.append(Token(word, KEYWORDS[word], line))
             line += 1
+            continue
+
+        
 
     return tokens
 
