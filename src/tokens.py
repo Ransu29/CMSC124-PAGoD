@@ -163,6 +163,8 @@ KEYWORDS: dict[str, T] = {
     "BTW": T.BTW,
     "OBTW": T.OBTW,
     "TLDR": T.TLDR,
+    "\n": T.NEWLINE,
+    ",": T.NEWLINE
 }
 
 
