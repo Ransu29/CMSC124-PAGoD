@@ -37,8 +37,15 @@ class T(Enum):
     NUMBR_LIT = auto()
     NUMBAR_LIT = auto()
     YARN_LIT = auto()
+
+    # types
+    NUMBR = auto()
+    NUMBAR = auto()
+    YARN = auto()
     WIN = auto()
     FAIL = auto()
+    NOOB = auto()
+    TROOF = auto()
 
     # type keyword (NUMBER/NUMBAR/YARN/TROOF/NOOB)
     TYPE = auto()
@@ -166,7 +173,18 @@ KEYWORDS: dict[str, T] = {
 }
 
 
-TYPE_NAMES = {"NUMBR", "NUMBAR", "YARN", "TROOF", "NOOB"}
+TYPES: dict[str: T] = {
+    "NUMBR_LIT": T.NUMBR_LIT,
+    "NUMBAR_LIT": T.NUMBAR_LIT,
+    "YARN_LIT": T.YARN_LIT,
+    "NUMBR": T.NUMBR,
+    "NUMBAR": T.NUMBAR,
+    "YARN": T.YARN,
+    "TROOF": T.TROOF,
+    "WIN": T.WIN,
+    "FAIL": T.FAIL,
+    "NOOB": T.NOOB
+}
 
 
 @dataclass
