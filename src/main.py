@@ -5,7 +5,7 @@ from tokens import T
 # Gets the root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Change this to whichever file in examples/ you want to analyze
+# change to file in examples/ to analyze
 TARGET_FILE = "hello.lol"
 
 
