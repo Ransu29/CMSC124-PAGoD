@@ -42,8 +42,16 @@ def parse_declaration(line):
     return ('VAR_DECL', var_name, init_val)
 
 def parse_assignment(line):
-    pass
-
+    for i, token in enumerate(line):
+        if token.type == T.R:
+            var_name = line[i - 1].value
+            if len(line) - (i + 1) == 1:
+                value = line[i + 1].value
+            else:
+                value = " ".join(str(t.value) for t in line[i + 1:])
+                
+            return ('ASSIGNMENT', var_name, value)
+    
 def parse_print(line):
     pass
 
