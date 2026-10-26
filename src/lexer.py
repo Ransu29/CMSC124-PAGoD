@@ -78,14 +78,18 @@ def tokenize(code: str) -> list[Token]:
             # string literal (yarn)
             if raw_line[pos] in ('"', "“"):
                 closing_quote = '"' if raw_line[pos] == '"' else "”"
+                quote_char = raw_line[pos]
                 quote_end = raw_line.find(closing_quote, pos + 1)
                 if quote_end == -1:
                     # unclosed string literal error
-                    line_tokens.append(Token(T.ERROR, raw_line[pos:], line_index))
+                    line_tokens.append(Token(T.STRING_DELIMITER, quote_char, line_index))
+                    line_tokens.append(Token(T.ERROR, raw_line[pos + 1:], line_index))
                     pos = line_length
                 else:
-                    raw_yarn = raw_line[pos : quote_end + 1]
-                    line_tokens.append(Token(T.YARN_LIT, raw_yarn, line_index))
+                    line_tokens.append(Token(T.STRING_DELIMITER, quote_char, line_index))
+                    yarn_content = raw_line[pos + 1 : quote_end]
+                    line_tokens.append(Token(T.YARN_LIT, yarn_content, line_index))
+                    line_tokens.append(Token(T.STRING_DELIMITER, raw_line[quote_end], line_index))
                     pos = quote_end + 1
                 continue
 
