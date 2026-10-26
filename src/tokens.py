@@ -38,6 +38,7 @@ class T(Enum):
     NUMBR_LIT = auto()
     NUMBAR_LIT = auto()
     YARN_LIT = auto()
+    STRING_DELIMITER = auto()
     WIN = auto()
     FAIL = auto()
 
@@ -178,3 +179,111 @@ class Token:
     type: T
     value: str
     line: int
+
+    @property
+    def classification(self) -> str:
+        return CLASSIFICATIONS.get(self.type, "Unknown")
+
+
+# human-readable classifications
+CLASSIFICATIONS: dict[T, str] = {
+    # program & section delimiters
+    T.HAI: "Code Delimiter",
+    T.KTHXBYE: "Code Delimiter",
+    T.WAZZUP: "Code Delimiter",
+    T.BUHBYE: "Code Delimiter",
+
+    # variable declaration & assignment
+    T.I_HAS_A: "Variable Declaration",
+    T.ITZ: "Variable Assignment",
+    T.R: "Variable Assignment",
+    T.IS_NOW_A: "Typecasting Keyword",
+    T.MAEK: "Typecasting Keyword",
+    T.A: "Type Delimiter",
+
+    # identifiers
+    T.IDENTIFIER: "Variable Identifier",
+
+    # literals & delimiters
+    T.NUMBR_LIT: "Literal",
+    T.NUMBAR_LIT: "Literal",
+    T.YARN_LIT: "Literal",
+    T.STRING_DELIMITER: "String Delimiter",
+    T.WIN: "Literal",
+    T.FAIL: "Literal",
+    T.TYPE: "Type Literal",
+
+    # I/O
+    T.VISIBLE: "Output Keyword",
+    T.GIMMEH: "Input Keyword",
+    T.BANG: "Suppress Newline",
+    T.PLUS: "Plus Sign",
+    T.COMMA: "Soft Linebreak",
+
+    # arithmetic
+    T.ADD: "Arithmetic Operator",
+    T.SUB: "Arithmetic Operator",
+    T.MUL: "Arithmetic Operator",
+    T.DIV: "Arithmetic Operator",
+    T.MOD: "Arithmetic Operator",
+    T.MAX: "Arithmetic Operator",
+    T.MIN: "Arithmetic Operator",
+
+    # boolean & comparison
+    T.AND: "Boolean Operator",
+    T.OR: "Boolean Operator",
+    T.XOR: "Boolean Operator",
+    T.NOT: "Boolean Operator",
+    T.ALL: "Infinite Arity Boolean Operator",
+    T.ANY: "Infinite Arity Boolean Operator",
+    T.EQUAL: "Comparison Operator",
+    T.NOT_EQUAL: "Comparison Operator",
+    T.GREATER: "Comparison Operator",
+    T.LESS: "Comparison Operator",
+    T.GREATER_EQUAL: "Comparison Operator",
+    T.LESS_EQUAL: "Comparison Operator",
+
+    # concatenation & delimiters
+    T.SMOOSH: "Concatenation Operator",
+    T.AN: "Parameter Separator",
+    T.MKAY: "Expression Delimiter",
+
+    # conditionals
+    T.IF: "Conditional Delimiter",
+    T.THEN: "If Keyword",
+    T.ELIF: "Else-If Keyword",
+    T.ELSE: "Else Keyword",
+    T.ENDIF: "Control Delimiter",
+
+    # switch-case
+    T.SWITCH: "Switch-Case Delimiter",
+    T.CASE: "Case Keyword",
+    T.DEFAULT: "Default Case Keyword",
+
+    # loops
+    T.LOOP_START: "Loop Delimiter",
+    T.LOOP_END: "Loop Delimiter",
+    T.INC: "Increment Operator",
+    T.DEC: "Decrement Operator",
+    T.YR: "Parameter Delimiter",
+    T.WHILE: "While Keyword",
+    T.UNTIL: "Until Keyword",
+    T.BREAK: "Break Statement",
+
+    # functions
+    T.FUNCTION_START: "Function Delimiter",
+    T.FUNCTION_END: "Function Delimiter",
+    T.RETURN: "Return Keyword",
+    T.FUNCTION_CALL: "Function Call",
+
+    # comments
+    T.BTW: "Comment Delimiter",
+    T.OBTW: "Comment Delimiter",
+    T.TLDR: "Comment Delimiter",
+    T.COMMENT_TEXT: "Comment Text",
+
+    # structure & errors
+    T.NEWLINE: "Newline",
+    T.EOF: "End of File",
+    T.ERROR: "Error",
+}
