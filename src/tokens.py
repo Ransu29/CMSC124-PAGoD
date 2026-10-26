@@ -1,8 +1,8 @@
-"""
-references: https://docs.python.org/3/library/dataclasses.html
-            https://docs.python.org/3/library/enum.html
-            https://testdriven.io/tips/44b6ecc1-750c-4ba2-95fb-8e376c99da7a/
-"""
+# references:
+# - lolcode spec v1.2: https://github.com/justinmeza/lolcode-spec/blob/master/v1.2/lolcode-spec-v1.2.md
+# - python dataclasses: https://docs.python.org/3/library/dataclasses.html
+# - python enum: https://docs.python.org/3/library/enum.html
+# - enum tips: https://testdriven.io/tips/44b6ecc1-750c-4ba2-95fb-8e376c99da7a/
 
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -27,6 +27,7 @@ class T(Enum):
 
     # I/O
     BANG = auto()
+    PLUS = auto()
     GIMMEH = auto()
     VISIBLE = auto()
 
@@ -37,15 +38,8 @@ class T(Enum):
     NUMBR_LIT = auto()
     NUMBAR_LIT = auto()
     YARN_LIT = auto()
-
-    # types
-    NUMBR = auto()
-    NUMBAR = auto()
-    YARN = auto()
     WIN = auto()
     FAIL = auto()
-    NOOB = auto()
-    TROOF = auto()
 
     # type keyword (NUMBER/NUMBAR/YARN/TROOF/NOOB)
     TYPE = auto()
@@ -170,21 +164,13 @@ KEYWORDS: dict[str, T] = {
     "BTW": T.BTW,
     "OBTW": T.OBTW,
     "TLDR": T.TLDR,
+    "+": T.PLUS,
+    ",": T.COMMA,
+    "!": T.BANG,
 }
 
 
-TYPES: dict[str: T] = {
-    "NUMBR_LIT": T.NUMBR_LIT,
-    "NUMBAR_LIT": T.NUMBAR_LIT,
-    "YARN_LIT": T.YARN_LIT,
-    "NUMBR": T.NUMBR,
-    "NUMBAR": T.NUMBAR,
-    "YARN": T.YARN,
-    "TROOF": T.TROOF,
-    "WIN": T.WIN,
-    "FAIL": T.FAIL,
-    "NOOB": T.NOOB
-}
+TYPE_NAMES = {"NUMBR", "NUMBAR", "YARN", "TROOF", "NOOB"}
 
 
 @dataclass
