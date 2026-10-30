@@ -1,12 +1,21 @@
 from pathlib import Path
 import lexer
+import parser
 from tokens import T
+
+try:
+    from errors import SyntaxError
+except ImportError:
+    try:
+        from src.errors import SyntaxError
+    except ImportError:
+        SyntaxError = Exception
 
 # Gets the root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # change to file in examples/ to analyze
-TARGET_FILE = "hello.lol"
+TARGET_FILE = "testing.lol"
 
 
 def print_tokens_table(tokens):
@@ -57,6 +66,17 @@ def main():
             print(f"    Line {err.line}: Unexpected or invalid lexeme '{err.value}'")
     else:
         print("\nLexical analysis completed with 0 errors.")
+
+        # run syntax analysis
+        try:
+            program = parser.parse(tokens)
+            print("\n--- Parse Tree (Tuples) ---")
+            for item in program.to_tuples():
+                print(f"    {item}")
+            print("\n--- AST Representation ---")
+            print(f"    {program}")
+        except SyntaxError as e:
+            print(f"\n[!] Syntax Error: {e}")
 
 
 if __name__ == "__main__":
