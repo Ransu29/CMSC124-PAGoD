@@ -6,19 +6,15 @@ from dataclasses import dataclass, field
 from typing import Any
 from tokens import T, Token
 
-try:
-    from errors import SyntaxError
-except ImportError:
-    try:
-        from src.errors import SyntaxError
-    except ImportError:
-        class SyntaxError(Exception):
-            def __init__(self, message: str, line: int):
-                super().__init__(f"Error on line {line}: {message}")
-                self.message = message
-                self.line = line
+class SyntaxError(Exception):
+    def __init__(self, message: str, line: int):
+        super().__init__(f"Error on line {line}: {message}")
+        self.message = message
+        self.line = line
 
 # ast node definitions
+
+# expressions
 @dataclass
 class Literal:
     value: Any
@@ -28,6 +24,40 @@ class Literal:
 class VariableRef:
     name: str
 
+@dataclass
+class BinaryOp:
+    op: str
+    left: Any
+    right: Any
+
+@dataclass
+class UnaryOp:
+    op: str
+    operand: Any
+
+@dataclass
+class InfiniteBoolExpr:
+    op: str
+    operands: list[Any] = field(default_factory=list)
+
+@dataclass
+class SmooshExpr:
+    operands: list[Any] = field(default_factory=list)
+
+SmoothExpr = SmooshExpr  # alias for spec naming compatibility
+
+@dataclass
+class TypecastExpr:
+    expr: Any
+    target_type: str
+
+@dataclass
+class FuncCall:
+    name: str
+    args: list[Any] = field(default_factory=list)
+
+
+# statements
 @dataclass
 class VarDecl:
     name: str
@@ -39,9 +69,62 @@ class Assignment:
     expr: Any = None
 
 @dataclass
+class RecastStmt:
+    var_name: str
+    target_type: str
+
+@dataclass
 class PrintStmt:
     operands: list[Any] = field(default_factory=list)
     suppress_newline: bool = False
+
+@dataclass
+class InputStmt:
+    var_name: str
+
+@dataclass
+class ExprStmt:
+    expr: Any
+
+@dataclass
+class IfStmt:
+    cond_expr: Any = None
+    then_body: list[Any] = field(default_factory=list)
+    mebbe_clauses: list[tuple[Any, list[Any]]] = field(default_factory=list)
+    else_body: list[Any] = field(default_factory=list)
+
+@dataclass
+class CaseClause:
+    literal: Literal
+    body: list[Any] = field(default_factory=list)
+
+@dataclass
+class SwitchStmt:
+    cases: list[CaseClause] = field(default_factory=list)
+    default_case: list[Any] | None = None
+
+@dataclass
+class LoopStmt:
+    label: str
+    operation: str
+    var_name: str
+    condition_type: str | None = None
+    condition_expr: Any = None
+    body: list[Any] = field(default_factory=list)
+
+@dataclass
+class FuncDef:
+    name: str
+    params: list[str] = field(default_factory=list)
+    body: list[Any] = field(default_factory=list)
+
+@dataclass
+class ReturnStmt:
+    expr: Any = None
+
+@dataclass
+class BreakStmt:
+    pass
 
 @dataclass
 class Program:
@@ -52,6 +135,12 @@ class Program:
     def to_tuples(self) -> list[tuple]:
         # helper to convert ast to tuple list format
         res = [('START', 'HAI')]
+        if self.wazzup:
+            res.append(('SECTION', 'WAZZUP'))
+            for decl in self.wazzup:
+                val = decl.value_expr.value if isinstance(decl.value_expr, Literal) else decl.value_expr
+                res.append(('DECLARATION', decl.name, val))
+            res.append(('SECTION', 'BUHBYE'))
         for stmt in self.body:
             if isinstance(stmt, VarDecl):
                 val = stmt.value_expr.value if isinstance(stmt.value_expr, Literal) else stmt.value_expr
@@ -59,6 +148,10 @@ class Program:
             elif isinstance(stmt, Assignment):
                 val = stmt.expr.value if isinstance(stmt.expr, Literal) else stmt.expr
                 res.append(('ASSIGNMENT', stmt.var_name, val))
+            elif isinstance(stmt, RecastStmt):
+                res.append(('RECAST', stmt.var_name, stmt.target_type))
+            elif isinstance(stmt, InputStmt):
+                res.append(('INPUT', stmt.var_name))
             elif isinstance(stmt, PrintStmt):
                 op_strs = []
                 for op in stmt.operands:
@@ -71,6 +164,20 @@ class Program:
                     else:
                         op_strs.append(str(op))
                 res.append(('PRINT', " + ".join(op_strs)))
+            elif isinstance(stmt, ExprStmt):
+                res.append(('EXPR_STMT', str(stmt.expr)))
+            elif isinstance(stmt, IfStmt):
+                res.append(('IF', 'O RLY?'))
+            elif isinstance(stmt, SwitchStmt):
+                res.append(('SWITCH', 'WTF?'))
+            elif isinstance(stmt, LoopStmt):
+                res.append(('LOOP', stmt.label))
+            elif isinstance(stmt, FuncDef):
+                res.append(('FUNC_DEF', stmt.name))
+            elif isinstance(stmt, ReturnStmt):
+                res.append(('RETURN', str(stmt.expr)))
+            elif isinstance(stmt, BreakStmt):
+                res.append(('BREAK', 'GTFO'))
         res.append(('END', 'KTHXBYE'))
         return res
 

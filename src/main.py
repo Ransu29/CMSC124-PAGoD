@@ -3,13 +3,7 @@ import lexer
 import parser
 from tokens import T
 
-try:
-    from errors import SyntaxError
-except ImportError:
-    try:
-        from src.errors import SyntaxError
-    except ImportError:
-        SyntaxError = Exception
+from parser import SyntaxError
 
 # Gets the root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
