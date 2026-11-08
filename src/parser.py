@@ -130,6 +130,41 @@ class ReturnStmt:
 class BreakStmt:
     pass
 
+# AST expression serialization helpers
+
+def expr_to_tuple(expr: Any) -> Any:
+    # convert an AST expression node into clean nested tuples or primitive values
+    if expr is None:
+        return None
+    if isinstance(expr, Literal):
+        return expr.value
+    if isinstance(expr, VariableRef):
+        return expr.name
+    if isinstance(expr, BinaryOp):
+        return (expr.op, expr_to_tuple(expr.left), expr_to_tuple(expr.right))
+    if isinstance(expr, UnaryOp):
+        return (expr.op, expr_to_tuple(expr.operand))
+    if isinstance(expr, InfiniteBoolExpr):
+        return (expr.op, *[expr_to_tuple(arg) for arg in expr.operands])
+    if isinstance(expr, SmooshExpr):
+        return ('SMOOSH', *[expr_to_tuple(arg) for arg in expr.operands])
+    if isinstance(expr, TypecastExpr):
+        return ('MAEK', expr_to_tuple(expr.expr), expr.target_type)
+    if isinstance(expr, FuncCall):
+        return ('CALL', expr.name, *[expr_to_tuple(arg) for arg in expr.args])
+    return expr
+
+
+def expr_to_str(expr: Any) -> str:
+    """Format an expression node into a readable string for PRINT statements."""
+    if isinstance(expr, Literal):
+        if expr.type_name == "YARN":
+            return f'"{expr.value}"'
+        return str(expr.value)
+    if isinstance(expr, VariableRef):
+        return expr.name
+    return str(expr_to_tuple(expr))
+
 @dataclass
 class Program:
     body: list[Any] = field(default_factory=list)
