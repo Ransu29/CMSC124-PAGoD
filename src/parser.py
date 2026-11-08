@@ -1,6 +1,10 @@
 # references:
 # - lolcode spec v1.2: https://github.com/justinmeza/lolcode-spec/blob/master/v1.2/lolcode-spec-v1.2.md
+# - crafting interpreters ast: https://craftinginterpreters.com/representing-code.html
 # - crafting interpreters parsing: https://craftinginterpreters.com/parsing-expressions.html
+# - prefix notation (polish notation): https://en.wikipedia.org/wiki/Polish_notation
+# - recursive descent parsing: https://en.wikipedia.org/wiki/Recursive_descent_parser
+# - python dataclasses: https://docs.python.org/3/library/dataclasses.html
 
 from dataclasses import dataclass, field
 from typing import Any
@@ -181,6 +185,24 @@ class Program:
         res.append(('END', 'KTHXBYE'))
         return res
 
+BINARY_OPERATORS = {
+    # arithmetic
+    T.ADD,
+    T.SUB,
+    T.MUL,
+    T.DIV,
+    T.MOD,
+    T.MAX,
+    T.MIN,
+    # boolean
+    T.AND,
+    T.OR,
+    T.XOR,
+    # comparison
+    T.EQUAL,
+    T.NOT_EQUAL,
+}
+
 class Parser:
     def __init__(self, tokens: list[Token]):
         self.tokens = tokens
@@ -228,12 +250,79 @@ class Parser:
             return Literal(yarn_tok.value, "YARN")
         if self.match(T.YARN_LIT):
             return Literal(tok.value, "YARN")
+        if self.match(T.TYPE):
+            return Literal(tok.value, "TYPE")
         if self.match(T.IDENTIFIER):
             return VariableRef(tok.value)
         raise SyntaxError(f"Unexpected token in expression: '{tok.value}'", tok.line)
 
+    def parse_infinite_bool(self, op: str) -> InfiniteBoolExpr:
+        operands = [self.parse_expression()]
+        while self.match(T.AN):
+            operands.append(self.parse_expression())
+        self.consume(T.MKAY, f"Expected 'MKAY' to close '{op}' expression")
+        return InfiniteBoolExpr(op, operands)
+
+    def parse_smoosh(self) -> SmooshExpr:
+        operands = [self.parse_expression()]
+        while self.match(T.AN):
+            operands.append(self.parse_expression())
+        if self.check(T.MKAY):
+            self.match(T.MKAY)
+        return SmooshExpr(operands)
+
+    def parse_func_call(self) -> FuncCall:
+        name_tok = self.consume(T.IDENTIFIER, "Expected function name after 'I IZ'")
+        args = []
+        if self.match(T.YR):
+            args.append(self.parse_expression())
+            while self.match(T.AN):
+                self.match(T.YR)
+                args.append(self.parse_expression())
+        self.consume(T.MKAY, "Expected 'MKAY' to close function call")
+        return FuncCall(name_tok.value, args)
+
+    # references:
+    # - prefix operations in lolcode: https://github.com/justinmeza/lolcode-spec/blob/master/v1.2/lolcode-spec-v1.2.md#operations
+    # - recursive descent expression parsing: https://craftinginterpreters.com/parsing-expressions.html
     def parse_expression(self) -> Any:
-        # shortcut: prefix operators deferred, full expression parser in priority 2
+        tok = self.peek()
+
+        # binary operators: arithmetic, boolean binary, comparison
+        if tok.type in BINARY_OPERATORS:
+            self.current += 1
+            op = tok.value
+            left = self.parse_expression()
+            self.consume(T.AN, f"Expected 'AN' separating operands for '{op}'")
+            right = self.parse_expression()
+            return BinaryOp(op, left, right)
+
+        # unary operator: NOT
+        if self.match(T.NOT):
+            operand = self.parse_expression()
+            return UnaryOp("NOT", operand)
+
+        # infinite arity boolean: ALL OF, ANY OF
+        if self.match(T.ALL):
+            return self.parse_infinite_bool("ALL OF")
+        if self.match(T.ANY):
+            return self.parse_infinite_bool("ANY OF")
+
+        # concatenation: SMOOSH
+        if self.match(T.SMOOSH):
+            return self.parse_smoosh()
+
+        # typecasting: MAEK <expr> [A] <type>
+        if self.match(T.MAEK):
+            expr = self.parse_expression()
+            self.match(T.A)  # optional 'A' delimiter
+            type_tok = self.consume(T.TYPE, "Expected type name after 'MAEK' (NUMBR, NUMBAR, YARN, TROOF, NOOB)")
+            return TypecastExpr(expr, type_tok.value)
+
+        # function call: I IZ <name> [YR <arg1> [AN YR <arg2>...]] MKAY
+        if self.match(T.FUNCTION_CALL):
+            return self.parse_func_call()
+
         return self.parse_primary()
 
     def parse_declaration(self) -> VarDecl:
