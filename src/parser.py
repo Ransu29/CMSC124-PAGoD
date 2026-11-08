@@ -130,6 +130,85 @@ class ReturnStmt:
 class BreakStmt:
     pass
 
+# AST expression serialization helpers
+
+def expr_to_tuple(expr: Any) -> Any:
+    # convert an AST expression node into clean nested tuples or primitive values
+    if expr is None:
+        return None
+    if isinstance(expr, Literal):
+        return expr.value
+    if isinstance(expr, VariableRef):
+        return expr.name
+    if isinstance(expr, BinaryOp):
+        return (expr.op, expr_to_tuple(expr.left), expr_to_tuple(expr.right))
+    if isinstance(expr, UnaryOp):
+        return (expr.op, expr_to_tuple(expr.operand))
+    if isinstance(expr, InfiniteBoolExpr):
+        return (expr.op, *[expr_to_tuple(arg) for arg in expr.operands])
+    if isinstance(expr, SmooshExpr):
+        return ('SMOOSH', *[expr_to_tuple(arg) for arg in expr.operands])
+    if isinstance(expr, TypecastExpr):
+        return ('MAEK', expr_to_tuple(expr.expr), expr.target_type)
+    if isinstance(expr, FuncCall):
+        return ('CALL', expr.name, *[expr_to_tuple(arg) for arg in expr.args])
+    return expr
+
+
+def expr_to_str(expr: Any) -> str:
+    # format an expression node into a readable string for PRINT statements
+    if isinstance(expr, Literal):
+        if expr.type_name == "YARN":
+            return f'"{expr.value}"'
+        return str(expr.value)
+    if isinstance(expr, VariableRef):
+        return expr.name
+    return str(expr_to_tuple(expr))
+
+def stmt_to_tuple(stmt: Any) -> tuple:
+    # convert an AST statement node and its inner blocks into clean nested tuples
+    if isinstance(stmt, VarDecl):
+        return ('DECLARATION', stmt.name, expr_to_tuple(stmt.value_expr))
+    if isinstance(stmt, Assignment):
+        return ('ASSIGNMENT', stmt.var_name, expr_to_tuple(stmt.expr))
+    if isinstance(stmt, RecastStmt):
+        return ('RECAST', stmt.var_name, stmt.target_type)
+    if isinstance(stmt, InputStmt):
+        return ('INPUT', stmt.var_name)
+    if isinstance(stmt, PrintStmt):
+        return ('PRINT', " + ".join(expr_to_str(op) for op in stmt.operands))
+    if isinstance(stmt, ExprStmt):
+        return ('EXPR_STMT', expr_to_tuple(stmt.expr))
+    if isinstance(stmt, IfStmt):
+        return (
+            'IF',
+            expr_to_tuple(stmt.cond_expr),
+            [stmt_to_tuple(s) for s in stmt.then_body],
+            [(expr_to_tuple(cond), [stmt_to_tuple(s) for s in body]) for cond, body in stmt.mebbe_clauses],
+            [stmt_to_tuple(s) for s in stmt.else_body],
+        )
+    if isinstance(stmt, SwitchStmt):
+        cases = [(expr_to_tuple(c.literal), [stmt_to_tuple(s) for s in c.body]) for c in stmt.cases]
+        default = [stmt_to_tuple(s) for s in stmt.default_case] if stmt.default_case else None
+        return ('SWITCH', cases, default)
+    if isinstance(stmt, LoopStmt):
+        return (
+            'LOOP',
+            stmt.label,
+            stmt.operation,
+            stmt.var_name,
+            stmt.condition_type,
+            expr_to_tuple(stmt.condition_expr),
+            [stmt_to_tuple(s) for s in stmt.body],
+        )
+    if isinstance(stmt, FuncDef):
+        return ('FUNC_DEF', stmt.name, stmt.params, [stmt_to_tuple(s) for s in stmt.body])
+    if isinstance(stmt, ReturnStmt):
+        return ('RETURN', expr_to_tuple(stmt.expr))
+    if isinstance(stmt, BreakStmt):
+        return ('BREAK', 'GTFO')
+    return ('UNKNOWN', str(stmt))
+
 @dataclass
 class Program:
     body: list[Any] = field(default_factory=list)
@@ -137,51 +216,15 @@ class Program:
     functions: list[Any] = field(default_factory=list)
 
     def to_tuples(self) -> list[tuple]:
-        # helper to convert ast to tuple list format
+        # convert the entire AST program into a list of tuples
         res = [('START', 'HAI')]
         if self.wazzup:
             res.append(('SECTION', 'WAZZUP'))
             for decl in self.wazzup:
-                val = decl.value_expr.value if isinstance(decl.value_expr, Literal) else decl.value_expr
-                res.append(('DECLARATION', decl.name, val))
+                res.append(stmt_to_tuple(decl))
             res.append(('SECTION', 'BUHBYE'))
         for stmt in self.body:
-            if isinstance(stmt, VarDecl):
-                val = stmt.value_expr.value if isinstance(stmt.value_expr, Literal) else stmt.value_expr
-                res.append(('DECLARATION', stmt.name, val))
-            elif isinstance(stmt, Assignment):
-                val = stmt.expr.value if isinstance(stmt.expr, Literal) else stmt.expr
-                res.append(('ASSIGNMENT', stmt.var_name, val))
-            elif isinstance(stmt, RecastStmt):
-                res.append(('RECAST', stmt.var_name, stmt.target_type))
-            elif isinstance(stmt, InputStmt):
-                res.append(('INPUT', stmt.var_name))
-            elif isinstance(stmt, PrintStmt):
-                op_strs = []
-                for op in stmt.operands:
-                    if isinstance(op, Literal) and op.type_name == "YARN":
-                        op_strs.append(f'"{op.value}"')
-                    elif isinstance(op, VariableRef):
-                        op_strs.append(op.name)
-                    elif isinstance(op, Literal):
-                        op_strs.append(str(op.value))
-                    else:
-                        op_strs.append(str(op))
-                res.append(('PRINT', " + ".join(op_strs)))
-            elif isinstance(stmt, ExprStmt):
-                res.append(('EXPR_STMT', str(stmt.expr)))
-            elif isinstance(stmt, IfStmt):
-                res.append(('IF', 'O RLY?'))
-            elif isinstance(stmt, SwitchStmt):
-                res.append(('SWITCH', 'WTF?'))
-            elif isinstance(stmt, LoopStmt):
-                res.append(('LOOP', stmt.label))
-            elif isinstance(stmt, FuncDef):
-                res.append(('FUNC_DEF', stmt.name))
-            elif isinstance(stmt, ReturnStmt):
-                res.append(('RETURN', str(stmt.expr)))
-            elif isinstance(stmt, BreakStmt):
-                res.append(('BREAK', 'GTFO'))
+            res.append(stmt_to_tuple(stmt))
         res.append(('END', 'KTHXBYE'))
         return res
 
