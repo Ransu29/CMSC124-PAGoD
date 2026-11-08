@@ -282,9 +282,6 @@ class Parser:
         self.consume(T.MKAY, "Expected 'MKAY' to close function call")
         return FuncCall(name_tok.value, args)
 
-    # references:
-    # - prefix operations in lolcode: https://github.com/justinmeza/lolcode-spec/blob/master/v1.2/lolcode-spec-v1.2.md#operations
-    # - recursive descent expression parsing: https://craftinginterpreters.com/parsing-expressions.html
     def parse_expression(self) -> Any:
         tok = self.peek()
 
@@ -349,16 +346,201 @@ class Parser:
         suppress = self.match(T.BANG)
         return PrintStmt(operands, suppress_newline=suppress)
 
+    def parse_input(self) -> InputStmt:
+        self.consume(T.GIMMEH, "Expected 'GIMMEH'")
+        var_tok = self.consume(T.IDENTIFIER, "Expected variable name after 'GIMMEH'")
+        return InputStmt(var_tok.value)
+
+    def parse_recast(self) -> RecastStmt:
+        var_tok = self.consume(T.IDENTIFIER, "Expected variable name")
+        self.consume(T.IS_NOW_A, "Expected 'IS NOW A'")
+        type_tok = self.consume(T.TYPE, "Expected type name after 'IS NOW A' (NUMBR, NUMBAR, YARN, TROOF, NOOB)")
+        return RecastStmt(var_tok.value, type_tok.value)
+
+    def parse_statement_block(self, stop_tokens: tuple[T, ...]) -> list[Any]:
+        body = []
+        self.skip_newlines()
+        while (
+            self.peek().type not in stop_tokens
+            and self.peek().type not in (T.KTHXBYE, T.EOF)
+        ):
+            stmt = self.parse_statement()
+            body.append(stmt)
+            self.skip_newlines()
+        return body
+
+    def parse_conditional(self) -> IfStmt:
+        self.consume(T.IF, "Expected 'O RLY?'")
+        self.skip_newlines()
+        self.consume(T.THEN, "Expected 'YA RLY' after 'O RLY?'")
+        then_body = self.parse_statement_block((T.ELIF, T.ELSE, T.ENDIF))
+
+        mebbe_clauses = []
+        while self.match(T.ELIF):
+            cond_expr = self.parse_expression()
+            mebbe_body = self.parse_statement_block((T.ELIF, T.ELSE, T.ENDIF))
+            mebbe_clauses.append((cond_expr, mebbe_body))
+
+        else_body = []
+        if self.match(T.ELSE):
+            else_body = self.parse_statement_block((T.ENDIF,))
+
+        self.consume(T.ENDIF, "Expected 'OIC' to close conditional block")
+        return IfStmt(then_body=then_body, mebbe_clauses=mebbe_clauses, else_body=else_body)
+
+    def parse_switch(self) -> SwitchStmt:
+        self.consume(T.SWITCH, "Expected 'WTF?'")
+        self.skip_newlines()
+
+        cases = []
+        while self.match(T.CASE):
+            case_lit = self.parse_primary()
+            if not isinstance(case_lit, Literal):
+                raise SyntaxError(f"Expected literal value for case, got '{case_lit}'", self.peek().line)
+            case_body = self.parse_statement_block((T.CASE, T.DEFAULT, T.ENDIF))
+            cases.append(CaseClause(case_lit, case_body))
+
+        default_case = None
+        if self.match(T.DEFAULT):
+            default_case = self.parse_statement_block((T.ENDIF,))
+
+        self.consume(T.ENDIF, "Expected 'OIC' to close switch block")
+        return SwitchStmt(cases=cases, default_case=default_case)
+
+    def parse_loop(self) -> LoopStmt:
+        self.consume(T.LOOP_START, "Expected 'IM IN YR'")
+        start_label = self.consume(T.IDENTIFIER, "Expected loop label after 'IM IN YR'").value
+
+        op_tok = self.peek()
+        if op_tok.type not in (T.INC, T.DEC):
+            raise SyntaxError(f"Expected 'UPPIN' or 'NERFIN' in loop header, got '{op_tok.value}'", op_tok.line)
+        self.current += 1
+        operation = op_tok.value
+
+        self.consume(T.YR, "Expected 'YR' before loop variable")
+        var_name = self.consume(T.IDENTIFIER, "Expected loop variable name").value
+
+        cond_type = None
+        cond_expr = None
+        if self.match(T.UNTIL):
+            cond_type = "TIL"
+            cond_expr = self.parse_expression()
+        elif self.match(T.WHILE):
+            cond_type = "WILE"
+            cond_expr = self.parse_expression()
+
+        body = self.parse_statement_block((T.LOOP_END,))
+
+        self.consume(T.LOOP_END, f"Expected 'IM OUTTA YR' to close loop '{start_label}'")
+        end_label_tok = self.consume(T.IDENTIFIER, "Expected loop label after 'IM OUTTA YR'")
+        if end_label_tok.value != start_label:
+            raise SyntaxError(
+                f"Mismatched loop label: started with '{start_label}' but ended with '{end_label_tok.value}'",
+                end_label_tok.line,
+            )
+
+        return LoopStmt(
+            label=start_label,
+            operation=operation,
+            var_name=var_name,
+            condition_type=cond_type,
+            condition_expr=cond_expr,
+            body=body,
+        )
+
+    def parse_func_def(self) -> FuncDef:
+        self.consume(T.FUNCTION_START, "Expected 'HOW IZ I'")
+        name = self.consume(T.IDENTIFIER, "Expected function name after 'HOW IZ I'").value
+
+        params = []
+        if self.match(T.YR):
+            params.append(self.consume(T.IDENTIFIER, "Expected parameter name after 'YR'").value)
+            while self.match(T.AN):
+                self.consume(T.YR, "Expected 'YR' after 'AN' in parameter list")
+                params.append(self.consume(T.IDENTIFIER, "Expected parameter name after 'YR'").value)
+
+        body = self.parse_statement_block((T.FUNCTION_END,))
+        self.consume(T.FUNCTION_END, f"Expected 'IF U SAY SO' to close function '{name}'")
+        return FuncDef(name=name, params=params, body=body)
+
+    def parse_return(self) -> ReturnStmt:
+        self.consume(T.RETURN, "Expected 'FOUND YR'")
+        expr = self.parse_expression()
+        return ReturnStmt(expr)
+
     def parse_statement(self) -> Any:
-        # shortcut: wazzup block and control flow deferred, full statements in priority 2-3
+        self.skip_newlines()
+
+        # Variable declaration
         if self.check(T.I_HAS_A):
             return self.parse_declaration()
+
+        # Output
         if self.check(T.VISIBLE):
             return self.parse_print()
+
+        # Input
+        if self.check(T.GIMMEH):
+            return self.parse_input()
+
+        # Conditional (O RLY?)
+        if self.check(T.IF):
+            return self.parse_conditional()
+
+        # Switch-case (WTF?)
+        if self.check(T.SWITCH):
+            return self.parse_switch()
+
+        # Loop (IM IN YR)
+        if self.check(T.LOOP_START):
+            return self.parse_loop()
+
+        # Function definition (HOW IZ I)
+        if self.check(T.FUNCTION_START):
+            return self.parse_func_def()
+
+        # Return (FOUND YR)
+        if self.check(T.RETURN):
+            return self.parse_return()
+
+        # Break (GTFO)
+        if self.check(T.BREAK):
+            self.consume(T.BREAK, "Expected 'GTFO'")
+            return BreakStmt()
+
+        # Identifier statements: assignment, recast, or expression statement
         if self.check(T.IDENTIFIER):
-            if self.current + 1 < len(self.tokens) and self.tokens[self.current + 1].type == T.R:
-                return self.parse_assignment()
+            if self.current + 1 < len(self.tokens):
+                next_tok = self.tokens[self.current + 1]
+                if next_tok.type == T.R:
+                    return self.parse_assignment()
+                if next_tok.type == T.IS_NOW_A:
+                    return self.parse_recast()
+
+        # Expression statements (standalone expression, function call, comparison, variable reference)
         tok = self.peek()
+        if (
+            tok.type in BINARY_OPERATORS
+            or tok.type in (
+                T.FUNCTION_CALL,
+                T.NOT,
+                T.ALL,
+                T.ANY,
+                T.SMOOSH,
+                T.MAEK,
+                T.IDENTIFIER,
+                T.NUMBR_LIT,
+                T.NUMBAR_LIT,
+                T.STRING_DELIMITER,
+                T.YARN_LIT,
+                T.WIN,
+                T.FAIL,
+                T.TYPE,
+            )
+        ):
+            expr = self.parse_expression()
+            return ExprStmt(expr)
+
         raise SyntaxError(f"Invalid statement starting with '{tok.value}'", tok.line)
 
     def parse(self) -> Program:
