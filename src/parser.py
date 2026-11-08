@@ -322,6 +322,22 @@ class Parser:
 
         return self.parse_primary()
 
+    def parse_var_section(self) -> list[VarDecl]:
+        self.consume(T.WAZZUP, "Expected 'WAZZUP'")
+        self.skip_newlines()
+        decls = []
+        while not self.check(T.BUHBYE) and not self.check(T.EOF):
+            if not self.check(T.I_HAS_A):
+                tok = self.peek()
+                raise SyntaxError(
+                    f"Only variable declarations ('I HAS A') are allowed in WAZZUP section, got '{tok.value}'",
+                    tok.line,
+                )
+            decls.append(self.parse_declaration())
+            self.skip_newlines()
+        self.consume(T.BUHBYE, "Expected 'BUHBYE' to close 'WAZZUP' section")
+        return decls
+    
     def parse_declaration(self) -> VarDecl:
         self.consume(T.I_HAS_A, "Expected 'I HAS A'")
         name_tok = self.consume(T.IDENTIFIER, "Expected variable name")
@@ -471,6 +487,11 @@ class Parser:
     def parse_statement(self) -> Any:
         self.skip_newlines()
 
+        # Reject WAZZUP if it appears inside the body
+        if self.check(T.WAZZUP):
+            tok = self.peek()
+            raise SyntaxError("WAZZUP section must appear at the beginning of the program immediately after HAI", tok.line)
+
         # Variable declaration
         if self.check(T.I_HAS_A):
             return self.parse_declaration()
@@ -550,6 +571,12 @@ class Parser:
             self.current += 1
         self.skip_newlines()
 
+        # Variable Section (WAZZUP ... BUHBYE)
+        wazzup_decls = []
+        if self.check(T.WAZZUP):
+            wazzup_decls = self.parse_var_section()
+            self.skip_newlines()
+
         body = []
         while not self.check(T.KTHXBYE) and not self.check(T.EOF):
             stmt = self.parse_statement()
@@ -557,7 +584,7 @@ class Parser:
             self.skip_newlines()
 
         self.consume(T.KTHXBYE, "Program must end with 'KTHXBYE'")
-        return Program(body=body)
+        return Program(body=body, wazzup=wazzup_decls)
 
 def parse(tokens: list[Token]) -> Program:
     return Parser(tokens).parse()
