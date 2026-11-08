@@ -36,14 +36,11 @@ class InterpreterApp(ctk.CTk):
         self.grid_rowconfigure(1, weight=0)
         self.grid_rowconfigure(2, weight=2)
 
-        # configure dark styling for ttk tables
-        self.setup_table_style()
-
-        # build top left panel for code editing
-        self.create_editor_panel()
-
-        # build middle and right panels for tables
-        self.create_tables_panel()
+        # functions
+        self.setup_table_style() # configure dark styling for ttk tables
+        self.create_editor_panel() # build top left panel for code editing        
+        self.create_tables_panel()# build middle and right panels for tables
+        self.create_bottom_panel() # build bottom execute button and console panel
 
     # fucntion to configure treeview dark theme colors
     def setup_table_style(self):
@@ -127,6 +124,20 @@ class InterpreterApp(ctk.CTk):
         symbol_scroll = ttk.Scrollbar(self.symbol_frame, orient="vertical", command=self.symbol_table.yview)  # symbol scrollbar
         symbol_scroll.grid(row=1, column=1, sticky="ns", pady=5)
         self.symbol_table.configure(yscrollcommand=symbol_scroll.set)
+
+    # fucntion to build execute button and console output area
+    def create_bottom_panel(self):
+        # full width execute button spanning all columns
+        self.execute_button = ctk.CTkButton(self, text="EXECUTE", font=("Arial", 14, "bold"), command=self.execute_code)  # execute button
+        self.execute_button.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+
+        # multi line console output area spanning all columns
+        self.console = ctk.CTkTextbox(self, font=("Courier", 12))  # console text area
+        self.console.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
+
+    # placeholder fucntion for execute button action
+    def execute_code(self):
+        pass
 
     # handler to open and load lolcode file into editor
     def open_file(self):
