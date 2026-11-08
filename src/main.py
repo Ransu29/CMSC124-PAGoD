@@ -9,7 +9,7 @@ from parser import SyntaxError
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # change to file in examples/ to analyze
-TARGET_FILE = "testing.lol"
+TARGET_FILE = "conditionals.lol"
 
 
 def print_tokens_table(tokens):
