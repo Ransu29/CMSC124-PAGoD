@@ -7,6 +7,9 @@
 import tkinter.filedialog as filedialog
 import tkinter.ttk as ttk
 import customtkinter as ctk
+import lexer
+import parser
+from tokens import T
 
 # main window class for lolcode interpreter gui
 class InterpreterApp(ctk.CTk):
@@ -38,7 +41,7 @@ class InterpreterApp(ctk.CTk):
 
         # functions
         self.setup_table_style() # configure dark styling for ttk tables
-        self.create_editor_panel() # build top left panel for code editing        
+        self.create_editor_panel() # build top left panel for code editing
         self.create_tables_panel()# build middle and right panels for tables
         self.create_bottom_panel() # build bottom execute button and console panel
 
@@ -135,9 +138,43 @@ class InterpreterApp(ctk.CTk):
         self.console = ctk.CTkTextbox(self, font=("Courier", 12))  # console text area
         self.console.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
 
-    # placeholder fucntion for execute button action
+    # fucntion to execute code from editor, update lexemes table and report syntax
     def execute_code(self):
-        pass
+        code = self.editor.get("1.0", "end-1c")  # get current text from editor
+        
+        # clear existing rows from lexemes table
+        for item in self.tokens_table.get_children():
+            self.tokens_table.delete(item)
+
+        # clear console display area
+        self.console.delete("1.0", "end")
+
+        # check if editor has content, stop if empty
+        if not code.strip():
+            self.console.insert("end", "no code to execute\n")
+            return
+
+        tokens = lexer.tokenize(code)  # tokenize editor content into lexemes
+
+        # insert valid lexemes into table
+        for tok in tokens:
+            # skip structural tokens from table display
+            if tok.type not in (T.NEWLINE, T.EOF):
+                self.tokens_table.insert("", "end", values=(tok.value, tok.classification))
+
+        lex_errors = [t for t in tokens if t.type == T.ERROR]  # collect all lexical errors
+        
+        # check if lexical errors exist, stop if found
+        if lex_errors:
+            self.console.insert("end", f"lexical error: found {len(lex_errors)} invalid token(s)\n")
+            return
+
+        # run syntax analysis on token stream
+        try:
+            program = parser.parse(tokens)  # build abstract syntax tree
+            self.console.insert("end", "lexical and syntax analysis completed with 0 errors\n")
+        except parser.SyntaxError as err:
+            self.console.insert("end", f"syntax error on line {err.line}: {err.message}\n")
 
     # handler to open and load lolcode file into editor
     def open_file(self):
