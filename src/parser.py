@@ -515,6 +515,8 @@ class Parser:
             self.skip_newlines()
 
         self.consume(T.KTHXBYE, "Program must end with 'KTHXBYE'")
+        self.skip_newlines()
+        self.consume(T.EOF, "Unexpected code after 'KTHXBYE'")
         return Program(body=body, wazzup=wazzup_decls)
 
 def parse(tokens: list[Token]) -> Program:
