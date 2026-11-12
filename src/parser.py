@@ -311,6 +311,8 @@ class Parser:
             self.peek().type not in stop_tokens
             and self.peek().type not in (T.KTHXBYE, T.EOF)
         ):
+            if self.check(T.FUNCTION_START):
+                raise SyntaxError("Function declarations are only allowed at the top level", self.peek().line)
             stmt = self.parse_statement()
             body.append(stmt)
             self.skip_newlines()
