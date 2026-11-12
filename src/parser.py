@@ -101,7 +101,6 @@ def stmt_to_tuple(stmt: Any) -> tuple:
 class Program:
     body: list[Any] = field(default_factory=list)
     wazzup: list[Any] = field(default_factory=list)
-    functions: list[Any] = field(default_factory=list)
 
     def to_tuples(self) -> list[tuple]:
         # convert the entire AST program into a list of tuples
