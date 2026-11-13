@@ -10,38 +10,47 @@ class SemanticError(Exception):
         self.message = message
 
 
-def analyze_expr(expr, declared_names: set[str]) -> None:
-    if isinstance(expr, Literal):
-        return
+class SemanticAnalyzer:
+    def __init__(self, program: Program):
+        self.program = program
 
-    if isinstance(expr, VariableRef):
-        if expr.name not in declared_names:
-            raise SemanticError(f"Variable '{expr.name}' is not declared")
-        return
+    def analyze(self):
+        declared_names: set[str] = set()
 
-    if isinstance(expr, UnaryOp):
-        analyze(expr.operand, declared_names)
+        for decl in self.program.wazzup:
+            if decl.name in declared_names:
+                raise SemanticError(f"Redefinition of existing variable at: '{decl.name}'")
 
-    if isinstance(expr, BinaryOp):
-        analyze_expr(expr.left, declared_names)
-        analyze_expr(expr.right, declared_names)
-        return
+            if decl.value_expr is not None:
+                self.analyze_expr(decl.value_expr, declared_names)
 
-    raise NotImplementedError(f"Unhandled expression: {type(expr).__name__}")
+            declared_names.add(decl.name)
 
+        for stmt in self.program.body:
+            pass
 
-def analyze(program: Program):
-    declared_names: set[str] = set()
+    def analyze_expr(self, expr, declared_names: set[str]) -> None:
+        if isinstance(expr, Literal):
+            return
 
-    for decl in program.wazzup:
-        if decl.name in declared_names:
-            raise SemanticError(f"Redefinition of existing variable at: '{decl.name}'")
+        if isinstance(expr, VariableRef):
+            if expr.name not in declared_names:
+                raise SemanticError(f"Variable '{expr.name}' is not declared")
+            return
 
-        if decl.value_expr is not None:
-            analyze_expr(decl.value_expr, declared_names)
+        if isinstance(expr, UnaryOp):
+            self.analyze_expr(expr.operand, declared_names)
+            return
 
-        declared_names.add(decl.name)
+        if isinstance(expr, BinaryOp):
+            self.analyze_expr(expr.left, declared_names)
+            self.analyze_expr(expr.right, declared_names)
+            return
 
-    for stmt in program.body:
-        pass
+        if isinstance(expr, (InfiniteBoolExpr, SmooshExpr)):
+            for operand in expr.operands:
+                self.analyze_expr(operand, declared_names)
+            return
+
+        raise NotImplementedError(f"Unhandled expression: {type(expr).__name__}")
  
