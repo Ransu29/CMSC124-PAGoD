@@ -1,15 +1,16 @@
 from pathlib import Path
 import lexer
 import parser
+import semantic_analyzer
 from tokens import T
 
 from parser import SyntaxError
-
+from semantic_analyzer import SemanticError
 # Gets the root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # change to file in examples/ to analyze
-TARGET_FILE = "conditionals.lol"
+TARGET_FILE = "wazzup_function.lol"
 
 
 def print_tokens_table(tokens):
@@ -50,6 +51,9 @@ def main():
     tokens = lexer.tokenize(content)
 
     print("\n--- Lexemes & Classification ---")
+    for t in tokens:
+        print(t)
+
     print_tokens_table(tokens)
 
     # check for lexical errors
@@ -67,10 +71,21 @@ def main():
             print("\n--- Parse Tree (Tuples) ---")
             for item in program.to_tuples():
                 print(f"    {item}")
+
             print("\n--- AST Representation ---")
-            print(f"    {program}")
+            print("WAZZUP")
+            print(program.wazzup)
+            print("BODY")
+            print(program.body)
+            print("\n--- Program Object ---")
+            print(program)
+
+            print("\n\n--- Semantic Analyzer ---")
+            program = semantic_analyzer.analyze(program)
         except SyntaxError as e:
             print(f"\n[!] Syntax Error: {e}")
+        except SemanticError as e:
+            print(f"\n[1] Semantic Error: {e}")
 
 
 if __name__ == "__main__":
