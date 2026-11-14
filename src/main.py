@@ -10,7 +10,7 @@ from semantic_analyzer import SemanticError
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # change to file in examples/ to analyze
-TARGET_FILE = "wazzup_function.lol"
+TARGET_FILE = "ast_coverage.lol"
 
 
 def print_tokens_table(tokens):
