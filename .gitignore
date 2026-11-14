@@ -5,3 +5,5 @@ venv/
 # python bytecode and cache files
 __pycache__/
 *.py[cod]
+docs/
+milestones/

@@ -166,7 +166,9 @@ class InterpreterApp(ctk.CTk):
         
         # check if lexical errors exist, stop if found
         if lex_errors:
-            self.console.insert("end", f"lexical error: found {len(lex_errors)} invalid token(s)\n")
+            self.console.insert("end", f"lexical error: found {len(lex_errors)} invalid token(s):\n")
+            for err in lex_errors:
+                self.console.insert("end", f"  line {err.line}: unexpected or invalid lexeme '{err.value}'\n")
             return
 
         # run syntax analysis on token stream
@@ -184,8 +186,8 @@ class InterpreterApp(ctk.CTk):
         if not file_path:
             return
 
-        # read content from selected file
-        with open(file_path, "r") as file:
+        # read content from selected file using utf-8 encoding
+        with open(file_path, "r", encoding="utf-8") as file:
             content = file.read()  # read full text
 
         # update editor text area with file content

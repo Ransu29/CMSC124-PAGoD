@@ -3,11 +3,7 @@
 # - Semantic Analysis and Symbol Tables: https://www.cs.cornell.edu/courses/cs4120/2023sp/notes/semantic/
 from parser import Program
 from ast_nodes import *
-
-class SemanticError(Exception):
-    def __init__(self, message: str):
-        super().__init__(f"{message}")
-        self.message = message
+from errors import SemanticError
 
 
 class SemanticAnalyzer:
@@ -19,7 +15,7 @@ class SemanticAnalyzer:
 
         for decl in self.program.wazzup:
             if decl.name in declared_names:
-                raise SemanticError(f"Redefinition of existing variable at: '{decl.name}'")
+                raise SemanticError(f"Redefinition of existing variable at: '{decl.name}'", decl.line)
 
             if decl.value_expr is not None:
                 self.analyze_expr(decl.value_expr, declared_names)
@@ -35,7 +31,7 @@ class SemanticAnalyzer:
 
         if isinstance(expr, VariableRef):
             if expr.name not in declared_names:
-                raise SemanticError(f"Variable '{expr.name}' is not declared")
+                raise SemanticError(f"Variable '{expr.name}' is not declared", expr.line)
             return
 
         if isinstance(expr, UnaryOp):

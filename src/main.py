@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 import lexer
 import parser
@@ -39,12 +40,23 @@ def print_tokens_table(tokens):
 
 
 def main():
-    file_path = PROJECT_ROOT / "examples" / TARGET_FILE
+    if len(sys.argv) > 1:
+        arg_path = Path(sys.argv[1])
+        if arg_path.exists():
+            file_path = arg_path
+        elif (PROJECT_ROOT / arg_path).exists():
+            file_path = PROJECT_ROOT / arg_path
+        else:
+            file_path = arg_path
+        target_name = file_path.name
+    else:
+        file_path = PROJECT_ROOT / "examples" / TARGET_FILE
+        target_name = TARGET_FILE
 
     with open(file_path, "r", encoding="utf-8") as file:
         content = file.read()
 
-    print(f"\n--- Source Code ({TARGET_FILE}) ---")
+    print(f"\n--- Source Code ({target_name}) ---")
     print(content)
 
     tokens = lexer.tokenize(content)
