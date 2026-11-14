@@ -18,16 +18,28 @@ class SemanticAnalyzer:
         declared_names: set[str] = set()
 
         for decl in self.program.wazzup:
-            if decl.name in declared_names:
-                raise SemanticError(f"Redefinition of existing variable at: '{decl.name}'")
-
-            if decl.value_expr is not None:
-                self.analyze_expr(decl.value_expr, declared_names)
-
-            declared_names.add(decl.name)
+            self.analyze_decl(decl, declared_names)
 
         for stmt in self.program.body:
-            pass
+            self.analyze_stmt(stmt, declared_names)
+
+
+    def analyze_decl(self, decl, declared_names: set[str]) -> None:
+        if decl.name in declared_names:
+            raise SemanticError(f"Redefinition of existing variable at: '{decl.name}'")
+
+        if decl.value_expr is not None:
+            self.analyze_expr(decl.value_expr, declared_names)
+
+        declared_names.add(decl.name)
+
+
+    def analyze_stmt(self, stmt, declared_names: set[str]) -> None:
+        # if stmt.name not in declared_names:
+        #         raise SemanticError(f"Variable '{stmt.name}' is not declared")
+
+        print(stmt)
+
 
     def analyze_expr(self, expr, declared_names: set[str]) -> None:
         if isinstance(expr, Literal):
@@ -53,4 +65,6 @@ class SemanticAnalyzer:
             return
 
         raise NotImplementedError(f"Unhandled expression: {type(expr).__name__}")
- 
+
+def analyze(program: Program) -> None:
+    return SemanticAnalyzer(program).analyze()
