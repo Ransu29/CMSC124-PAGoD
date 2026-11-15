@@ -43,7 +43,7 @@ class SemanticAnalyzer:
 
     def analyze_stmt(self, stmt, declared_names: set[str], *, can_gtfo: bool = False) -> None:
         # For debugging
-        print(stmt)
+        # print(stmt)
 
         if isinstance(stmt, Assignment):
             if stmt.var_name not in declared_names:
@@ -114,7 +114,7 @@ class SemanticAnalyzer:
                 raise SemanticError("GTFO must be inside a loop, switch, or function")
             return
         
-        raise NotImplementedError(f"Unhandled expression: {type(stmt).__name__}")
+        raise NotImplementedError(f"Unhandled statement: {type(stmt).__name__}")
 
 
     def analyze_expr(self, expr, declared_names: set[str]) -> None:
