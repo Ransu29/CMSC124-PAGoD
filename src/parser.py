@@ -575,6 +575,10 @@ class Parser:
 
         self.consume(T.KTHXBYE, "Program must end with 'KTHXBYE'")
         self.skip_newlines()
+        # function definitions are allowed after KTHXBYE; any other code is rejected
+        while self.check(T.FUNCTION_START):
+            body.append(self.parse_func_def())
+            self._finish_statement((T.FUNCTION_START, T.EOF), "Expected newline or comma after function definition")
         self.consume(T.EOF, "Unexpected code after 'KTHXBYE'")
         return Program(body=body, wazzup=wazzup_decls)
 
