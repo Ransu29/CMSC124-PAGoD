@@ -545,8 +545,14 @@ class Parser:
         raise SyntaxError(f"Invalid statement starting with '{tok.value}'", tok.line)
 
     def parse(self) -> Program:
-        # grammar: HAI [version] <lb> [WAZZUP ... BUHBYE <lb>] { <statement> <lb> } KTHXBYE
+        # grammar: { <function> <lb> } HAI [version] <lb> [WAZZUP ... BUHBYE <lb>]
+        # { <statement> <lb> } KTHXBYE { <lb> <function> } <lb> EOF
         self.skip_newlines()
+        # function definitions are allowed before  HAI
+        body = []
+        while self.check(T.FUNCTION_START):
+            body.append(self.parse_func_def())
+            self._finish_statement((T.HAI, T.FUNCTION_START), "Expected newline or comma after function definition")
         self.consume(T.HAI, "Program must start with 'HAI'")
 
         # optional LOLCODE version literal after HAI (e.g. HAI 1.2)
@@ -563,7 +569,6 @@ class Parser:
             self._finish_statement(program_end_tokens, "Expected newline or comma after 'BUHBYE'")
 
         # main program body statements (including top-level function definitions)
-        body = []
         while self.peek().type not in program_end_tokens:
             body.append(self.parse_statement())
             self._finish_statement(program_end_tokens, "Expected newline or comma after statement")
