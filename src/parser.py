@@ -231,6 +231,7 @@ class Parser:
     def parse_primary(self) -> Any:
         # grammar: <primary> ::= <literal> | varident
         #          <literal> ::= numbr | numbar | yarn | troof
+
         tok = self.peek()
         if self.match(T.NUMBR_LIT):
             return Literal(int(tok.value), "NUMBR", line=tok.line)
@@ -437,9 +438,11 @@ class Parser:
         cases = []
         while self.check(T.CASE):
             case_tok = self.consume(T.CASE, "Expected 'OMG'")
+            if self.check(T.TYPE):
+                raise SyntaxError(f"A type name ('{self.peek().value}') cannot be used as a case literal", self.peek().line)
             case_lit = self.parse_primary()
             if not isinstance(case_lit, Literal):
-                raise SyntaxError(f"Expected literal value for case, got '{case_lit}'", self.peek().line)
+                raise SyntaxError(f"Expected literal value for case, got variable '{case_lit.name}'", case_tok.line)
             case_body = self.parse_statement_block((T.CASE, T.DEFAULT, T.ENDIF))
             cases.append(CaseClause(case_lit, case_body, line=case_tok.line))
 
