@@ -16,7 +16,7 @@ class SemanticAnalyzer:
         self.function_arities: dict[str, int] = {}     # reject a second declaration of a function with a pre-existing name and check function arity
 
     def analyze(self):
-        declared_names: set[str] = set()
+        declared_names: set[str] = {"IT"}
 
         for decl in self.program.wazzup:
             self.analyze_decl(decl, declared_names)
@@ -40,7 +40,7 @@ class SemanticAnalyzer:
         declared_names.add(decl.name)
 
 
-    def analyze_stmt(self, stmt, declared_names: set[str]) -> None:
+    def analyze_stmt(self, stmt, declared_names: set[str], *, can_gtfo: bool = False) -> None:
         # For debugging
         print(stmt)
 
@@ -62,24 +62,58 @@ class SemanticAnalyzer:
 
         if isinstance(stmt, ExprStmt):
             self.analyze_expr(stmt.expr, declared_names)
+            return
 
         if isinstance(stmt, IfStmt):
-            self.analyze_expr(stmt.cond_expr)
-            for t in stmt.then_body:
-                self.analyze_expr(t, declared_names)
-            for m_any, m_list in stmt.mebbe_clauses:
-                self.analyze_expr(m_any, declared_names)
-                for a in m_list:
-                    self.analyze_expr(a, declared_names)
-            for e in stmt.else_body:
-                self.analyze_expr(e, declared_names)
+            if stmt.cond_expr is not None:
+                self.analyze_expr(stmt.cond_expr, declared_names)
+            for child in stmt.then_body:
+                self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo)
+            for condition, body in stmt.mebbe_clauses:
+                self.analyze_expr(condition, declared_names)
+                for child in body:
+                    self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo)
+            for child in stmt.else_body:
+                self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo)
+            return
 
         if isinstance(stmt, CaseClause):
             self.analyze_expr(stmt.literal, declared_names)
-            for i in stmt.body:
-                self.analyze_expr(i, declared_names)
+            for child in stmt.body:
+                self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo)
+            return
 
+        if isinstance(stmt, SwitchStmt):
+            for case in stmt.cases:
+                self.analyze_stmt(case, declared_names, can_gtfo=True)
+            if stmt.default_case is not None:
+                for def_case in stmt.default_case:
+                    self.analyze_stmt(def_case, declared_names, can_gtfo=True)
+            return
 
+        if isinstance(stmt, LoopStmt):
+            if stmt.condition_expr is not None:
+                self.analyze_expr(stmt.condition_expr, declared_names)
+            for child in stmt.body:
+                self.analyze_stmt(child, declared_names, can_gtfo=True)
+            return
+
+        if isinstance(stmt, FuncDef):
+            function_names = {"IT", *stmt.params}
+            for child in stmt.body:
+                self.analyze_stmt(child, function_names, can_gtfo=True)
+            return
+
+        if isinstance(stmt, ReturnStmt):
+            self.analyze_expr(stmt.expr, declared_names)
+            return
+
+        if isinstance(stmt, BreakStmt):
+            if not can_gtfo:
+                raise SemanticError("GTFO must be inside a loop, switch, or function")
+            return
+        
+        raise NotImplementedError(f"Unhandled expression: {type(stmt).__name__}")
 
 
     def analyze_expr(self, expr, declared_names: set[str]) -> None:
