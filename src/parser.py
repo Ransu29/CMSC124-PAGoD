@@ -253,9 +253,9 @@ class Parser:
 
     def _parse_an_operands(self) -> list[Any]:
         # parse one or more expressions separated by the 'AN' keyword
-        operands = [self.parse_expression()]
+        operands = [self.parse_expression(nested = True)]
         while self.match(T.AN):
-            operands.append(self.parse_expression())
+            operands.append(self.parse_expression(nested = True))
         return operands
 
     def parse_infinite_bool(self, op: str, line: int = 0) -> InfiniteBoolExpr:
@@ -282,7 +282,7 @@ class Parser:
         self.consume(T.MKAY, "Expected 'MKAY' to close function call")
         return FuncCall(name_tok.value, args, line=line or name_tok.line)
 
-    def parse_expression(self) -> Any:
+    def parse_expression(self, nested: bool = False) -> Any:
         # prefix notation eliminates precedence tables: operators always precede operands
         tok = self.peek()
 
@@ -290,14 +290,14 @@ class Parser:
         if tok.type in BINARY_OPERATORS:
             self.current += 1
             op = tok.value
-            left = self.parse_expression()
+            left = self.parse_expression(nested = True)
             self.consume(T.AN, f"Expected 'AN' separating operands for '{op}'")
-            right = self.parse_expression()
+            right = self.parse_expression(nested = True)
             return BinaryOp(op, left, right, line=tok.line)
 
         # unary boolean negation: NOT <expr>
         if self.match(T.NOT):
-            operand = self.parse_expression()
+            operand = self.parse_expression(nested = True)
             return UnaryOp("NOT", operand, line=tok.line)
 
         # infinite-arity boolean operations: ALL OF / ANY OF ... MKAY
@@ -312,7 +312,7 @@ class Parser:
 
         # explicit typecasting: MAEK <expr> [A] <type>
         if self.match(T.MAEK):
-            expr = self.parse_expression()
+            expr = self.parse_expression(nested = True)
             self.match(T.A)  # 'A' delimiter is optional in LOLCODE
             type_tok = self.consume(T.TYPE, "Expected type name after 'MAEK' (NUMBR, NUMBAR, YARN, TROOF, NOOB)")
             return TypecastExpr(expr, type_tok.value, line=tok.line)
