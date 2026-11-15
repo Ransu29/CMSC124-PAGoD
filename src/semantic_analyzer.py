@@ -18,7 +18,6 @@ class SemanticAnalyzer:
     def analyze(self):
         self.function_arities.clear()
         declared_names: set[str] = {"IT"}
-        declared_names: set[str] = {"IT"}
 
         for decl in self.program.wazzup:
             self.analyze_decl(decl, declared_names)
