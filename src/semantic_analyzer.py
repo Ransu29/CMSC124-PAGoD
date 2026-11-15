@@ -41,7 +41,7 @@ class SemanticAnalyzer:
         declared_names.add(decl.name)
 
 
-    def analyze_stmt(self, stmt, declared_names: set[str], *, can_gtfo: bool = False) -> None:
+    def analyze_stmt(self, stmt, declared_names: set[str], *, can_gtfo: bool = False, in_function: bool = False) -> None:
         # For debugging
         # print(stmt)
 
@@ -69,43 +69,49 @@ class SemanticAnalyzer:
             if stmt.cond_expr is not None:
                 self.analyze_expr(stmt.cond_expr, declared_names)
             for child in stmt.then_body:
-                self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo)
+                self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo, in_function=in_function)
             for condition, body in stmt.mebbe_clauses:
                 self.analyze_expr(condition, declared_names)
                 for child in body:
-                    self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo)
+                    self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo, in_function=in_function)
             for child in stmt.else_body:
-                self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo)
+                self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo, in_function=in_function)
             return
 
         if isinstance(stmt, CaseClause):
             self.analyze_expr(stmt.literal, declared_names)
             for child in stmt.body:
-                self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo)
+                self.analyze_stmt(child, declared_names, can_gtfo=can_gtfo, in_function=in_function)
             return
 
         if isinstance(stmt, SwitchStmt):
             for case in stmt.cases:
-                self.analyze_stmt(case, declared_names, can_gtfo=True)
+                self.analyze_stmt(case, declared_names, can_gtfo=True, in_function=in_function)
             if stmt.default_case is not None:
                 for def_case in stmt.default_case:
-                    self.analyze_stmt(def_case, declared_names, can_gtfo=True)
+                    self.analyze_stmt(def_case, declared_names, can_gtfo=True, in_function=in_function)
             return
 
         if isinstance(stmt, LoopStmt):
+            if stmt.var_name not in declared_names:
+                raise SemanticError(f"Loop variable '{stmt.var_name}' is not declared")
+
             if stmt.condition_expr is not None:
                 self.analyze_expr(stmt.condition_expr, declared_names)
+
             for child in stmt.body:
-                self.analyze_stmt(child, declared_names, can_gtfo=True)
+                self.analyze_stmt(child, declared_names, can_gtfo=True, in_function=in_function)
             return
 
         if isinstance(stmt, FuncDef):
             function_names = {"IT", *stmt.params}
             for child in stmt.body:
-                self.analyze_stmt(child, function_names, can_gtfo=True)
+                self.analyze_stmt(child, function_names, can_gtfo=True, in_function=True)
             return
 
         if isinstance(stmt, ReturnStmt):
+            if not in_function:
+                raise SemanticError("FOUND YR must be inside a function")
             self.analyze_expr(stmt.expr, declared_names)
             return
 
