@@ -51,7 +51,6 @@ EXPRESSION_START_TOKENS = {
     T.YARN_LIT,
     T.WIN,
     T.FAIL,
-    T.TYPE,
 }
 
 # Parse Tree / Tuple Serialization Helpers (for CLI & Debug Display)
@@ -230,7 +229,8 @@ class Parser:
     # --- Expression Parsing (Prefix Notation) ---
 
     def parse_primary(self) -> Any:
-        # grammar: <primary> ::= numbr | numbar | troof | yarn | type_literal | varident
+        # grammar: <primary> ::= <literal> | varident
+        #          <literal> ::= numbr | numbar | yarn | troof
         tok = self.peek()
         if self.match(T.NUMBR_LIT):
             return Literal(int(tok.value), "NUMBR", line=tok.line)
@@ -246,8 +246,6 @@ class Parser:
             return Literal(yarn_tok.value, "YARN", line=tok.line)
         if self.match(T.YARN_LIT):
             return Literal(tok.value, "YARN", line=tok.line)
-        if self.match(T.TYPE):
-            return Literal(tok.value, "TYPE", line=tok.line)
         if self.match(T.IDENTIFIER):
             return VariableRef(tok.value, line=tok.line)
         raise SyntaxError(f"Unexpected token in expression: '{tok.value}'", tok.line)
