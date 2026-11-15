@@ -1,5 +1,7 @@
 HAI
+WAZZUP
     I HAS A choice ITZ "B"
+BUHBYE
 
     choice
     WTF?

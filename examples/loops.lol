@@ -1,6 +1,8 @@
 HAI
 
-I HAS A i ITZ 1
+WAZZUP
+    I HAS A i ITZ 1
+BUHBYE
 
 IM IN YR counter UPPIN YR i TIL BOTH SAEM i AN 6
     VISIBLE i

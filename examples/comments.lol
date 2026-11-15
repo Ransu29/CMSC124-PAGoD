@@ -1,7 +1,9 @@
 HAI
     BTW This is a single-line comment on its own line
 
+WAZZUP
     I HAS A msg ITZ "Testing comments!" BTW This is an inline comment
+BUHBYE
 
     OBTW
         This is a multi-line comment.

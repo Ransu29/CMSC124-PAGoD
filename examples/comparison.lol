@@ -1,4 +1,5 @@
 HAI
+WAZZUP
     I HAS A x ITZ 10
     I HAS A y ITZ 20
 
@@ -11,6 +12,7 @@ HAI
     I HAS A is_lte ITZ BOTH SAEM x AN SMALLR OF x AN y
     I HAS A is_gt ITZ DIFFRINT x AN SMALLR OF x AN y
     I HAS A is_lt ITZ DIFFRINT x AN BIGGR OF x AN y
+BUHBYE
 
     VISIBLE is_equal
     VISIBLE is_diff
