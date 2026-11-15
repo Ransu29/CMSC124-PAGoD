@@ -285,7 +285,9 @@ class Parser:
     def parse_expression(self, nested: bool = False) -> Any:
         # prefix notation eliminates precedence tables: operators always precede operands
         tok = self.peek()
-
+        # SMOOSH, ALL OF, and ANY OF cannot be operands of other operations
+        if nested and tok.type in (T.ALL, T.ANY, T.SMOOSH):
+            raise SyntaxError(f"'{tok.value}' cannot be nested inside another expression", tok.line)
         # binary operations: <op> <left_expr> AN <right_expr>
         if tok.type in BINARY_OPERATORS:
             self.current += 1
