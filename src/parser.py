@@ -165,7 +165,6 @@ class Parser:
 
         # single-keyword statement dispatch table
         self._statement_parsers = {
-            T.I_HAS_A: self.parse_declaration,
             T.VISIBLE: self.parse_print,
             T.GIMMEH: self.parse_input,
             T.IF: self.parse_conditional,
@@ -523,6 +522,10 @@ class Parser:
         # WAZZUP is only valid immediately after HAI, never inside the body
         if tok.type == T.WAZZUP:
             raise SyntaxError("WAZZUP section must appear at the beginning of the program immediately after HAI", tok.line)
+
+        # variables may only be declared in the WAZZUP ... BUHBYE section
+        if tok.type == T.I_HAS_A:
+            raise SyntaxError("Variable declarations ('I HAS A') are only allowed inside the WAZZUP ... BUHBYE section", tok.line)
 
         if tok.type in self._statement_parsers:
             return self._statement_parsers[tok.type]()
