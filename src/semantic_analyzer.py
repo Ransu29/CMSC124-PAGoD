@@ -16,6 +16,8 @@ class SemanticAnalyzer:
         self.function_arities: dict[str, int] = {}     # reject a second declaration of a function with a pre-existing name and check function arity
 
     def analyze(self):
+        self.function_arities.clear()
+        declared_names: set[str] = {"IT"}
         declared_names: set[str] = {"IT"}
 
         for decl in self.program.wazzup:
