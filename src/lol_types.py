@@ -145,6 +145,6 @@ def values_equal(left: LolValue, right: LolValue) -> bool:
         return True
     if left.type_name == right.type_name:
         return left.value == right.value
-    if {left.type_name, right.type_name} == {"NUMBR", "NUMBAR"}:
+    if left.type_name in ("NUMBR", "NUMBAR") and right.type_name in ("NUMBR", "NUMBAR"):
         return float(left.value) == float(right.value)
     return False
