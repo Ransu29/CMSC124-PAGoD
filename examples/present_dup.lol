@@ -1,0 +1,10 @@
+HAI
+
+WAZZUP
+    I HAS A count ITZ 1
+    I HAS A count ITZ 2
+BUHBYE
+
+VISIBLE count
+
+KTHXBYE

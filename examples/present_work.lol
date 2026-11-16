@@ -1,0 +1,13 @@
+HAI
+
+WAZZUP
+    I HAS A name ITZ "PAGoD"
+    I HAS A year ITZ 2026
+    I HAS A isPassed ITZ WIN
+BUHBYE
+
+VISIBLE name
+VISIBLE year
+VISIBLE isPassed
+
+KTHXBYE
