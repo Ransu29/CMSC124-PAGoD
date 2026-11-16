@@ -7,10 +7,8 @@
 import tkinter.filedialog as filedialog
 import tkinter.ttk as ttk
 import customtkinter as ctk
-import lexer
-import parser
-import semantic_analyzer
-from errors import SemanticError, SyntaxError
+from controller import InterpreterController, format_lol_value
+from errors import LexicalError, LolRuntimeError, SemanticError, SyntaxError
 from tokens import T
 
 # main window class for lolcode interpreter gui
@@ -140,10 +138,10 @@ class InterpreterApp(ctk.CTk):
         self.console = ctk.CTkTextbox(self, font=("Courier", 12))  # console text area
         self.console.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
 
-    # fucntion to execute code from editor, update lexemes table and report syntax
+    # function to execute code from editor and update lexemes, symbol table, and console
     def execute_code(self):
         code = self.editor.get("1.0", "end-1c")  # get current text from editor
-        
+
         # clear existing rows from lexemes table
         for item in self.tokens_table.get_children():
             self.tokens_table.delete(item)
@@ -160,37 +158,62 @@ class InterpreterApp(ctk.CTk):
             self.console.insert("end", "no code to execute\n")
             return
 
-        tokens = lexer.tokenize(code)  # tokenize editor content into lexemes
+        controller = InterpreterController(
+            on_tokens_updated=self.update_tokens_table,
+            on_symbols_updated=self.update_symbol_table,
+            on_stdout=self.append_console,
+            request_stdin=self.prompt_input,
+            on_error=self.report_error,
+        )
+        controller.execute(code)
 
-        # insert valid lexemes into table
+    # populate lexemes table from token stream
+    def update_tokens_table(self, tokens):
         for tok in tokens:
             # skip structural tokens from table display
             if tok.type not in (T.NEWLINE, T.EOF):
                 self.tokens_table.insert("", "end", values=(tok.value, tok.classification))
 
-        lex_errors = [t for t in tokens if t.type == T.ERROR]  # collect all lexical errors
-        
-        # check if lexical errors exist, stop if found
-        if lex_errors:
-            self.console.insert("end", f"lexical error: found {len(lex_errors)} invalid token(s):\n")
-            for err in lex_errors:
-                self.console.insert("end", f"  line {err.line}: unexpected or invalid lexeme '{err.value}'\n")
-            return
+    # refresh symbol table with current variable bindings
+    def update_symbol_table(self, symbols):
+        for item in self.symbol_table.get_children():
+            self.symbol_table.delete(item)
+        for name, lol_val in symbols.items():
+            self.symbol_table.insert("", "end", values=(name, format_lol_value(lol_val)))
+        self.update_idletasks()
 
-        # run syntax and semantic analysis on parsed program
-        try:
-            program = parser.parse(tokens)                           # build abstract syntax tree
-            symbols = semantic_analyzer.analyze(program)             # run semantic analysis and collect symbol table
-            
-            # populate symbol table in gui with declared variables
-            for var_name, data in symbols.items():
-                self.symbol_table.insert("", "end", values=(var_name, data["value"]))
+    # append interpreter output to console and refresh display immediately
+    def append_console(self, text):
+        self.console.insert("end", text)
+        self.console.see("end")
+        self.update_idletasks()
 
-            self.console.insert("end", "lexical, syntax, and semantic analysis completed with 0 errors\n")
-        except SyntaxError as err:
-            self.console.insert("end", f"syntax error on line {err.line}: {err.message}\n")
-        except SemanticError as err:
-            self.console.insert("end", f"semantic error on line {err.line}: {err.message}\n")
+    # prompt user for GIMMEH input via modal dialog and echo it to console
+    def prompt_input(self):
+        dialog = ctk.CTkInputDialog(text="Enter input for GIMMEH:", title="Program Input")
+        user_input = dialog.get_input()
+        if user_input is None:
+            user_input = ""
+        self.append_console(f"{user_input}\n")
+        return user_input
+
+    # format and display lexical, syntax, semantic, or runtime errors in console
+    def report_error(self, err):
+        if isinstance(err, LexicalError):
+            phase = "Lexical Error"
+        elif isinstance(err, SyntaxError):
+            phase = "Syntax Error"
+        elif isinstance(err, SemanticError):
+            phase = "Semantic Error"
+        elif isinstance(err, LolRuntimeError):
+            phase = "Runtime Error"
+        else:
+            phase = "Error"
+
+        if err.line > 0:
+            self.append_console(f"\n[{phase}] Line {err.line}: {err.message}\n")
+        else:
+            self.append_console(f"\n[{phase}] {err.message}\n")
 
     # handler to open and load lolcode file into editor
     def open_file(self):
