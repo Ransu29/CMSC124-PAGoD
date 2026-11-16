@@ -7,6 +7,7 @@ from ast_nodes import *
 from errors import SemanticError
 from parser import Program
 
+VALID_TYPES = ("NOOB", "NUMBR", "NUMBAR", "YARN", "TROOF") # valid lolcode type names
 
 class SemanticAnalyzer:
     # validates delcarations, variable scope, fucntion arity, and flow control
@@ -32,7 +33,7 @@ class SemanticAnalyzer:
                     raise SemanticError(f"Function '{stmt.name}' is already declared", stmt.line)
 
                 # check parameter names for duplicates and reserved it keyword
-                seen_params: set[str] = set()                        # track parameter names seen in current fucntion
+                seen_params: set[str] = set() # track parameter names seen in current fucntion
                 for param in stmt.params:
                     # reject reserved implicit variable as parameter name
                     if param == "IT":
@@ -73,8 +74,62 @@ class SemanticAnalyzer:
         pass
 
     def analyze_expr(self, expr: Any, declared_names: set[str]) -> None:
-        # placeholder for expression checks, will be supplied in later commit
-        pass
+        # validate expression nodes recursively and verify declared names
+        if isinstance(expr, Literal):
+            # literal values are always valid
+            return
+
+        if isinstance(expr, VariableRef):
+            # verify variable name has been declared in accessible scope
+            if expr.name not in declared_names:
+                raise SemanticError(f"Variable '{expr.name}' is not declared", expr.line)
+            return
+
+        if isinstance(expr, UnaryOp):
+            # analyze inner operand expression
+            self.analyze_expr(expr.operand, declared_names)
+            return
+
+        if isinstance(expr, BinaryOp):
+            # analyze both left and right operand expressions
+            self.analyze_expr(expr.left, declared_names)
+            self.analyze_expr(expr.right, declared_names)
+            return
+
+        if isinstance(expr, (InfiniteBoolExpr, SmooshExpr)):
+            # analyze all operand expressions in sequence
+            for operand in expr.operands:
+                self.analyze_expr(operand, declared_names)
+            return
+
+        if isinstance(expr, TypecastExpr):
+            # analyze expression and verify target type is recognized
+            self.analyze_expr(expr.expr, declared_names)
+            if expr.target_type not in VALID_TYPES:
+                raise SemanticError(f"Unknown type '{expr.target_type}'", expr.line)
+            return
+
+        if isinstance(expr, FuncCall):
+            # verify fucntion has been declared
+            if expr.name not in self.function_arities:
+                raise SemanticError(f"Function '{expr.name}' is not declared", expr.line)
+
+            # verify number of arguments matches fucntion parameter count
+            expected = self.function_arities[expr.name]              # expected argument count from definition
+            actual = len(expr.args)                                  # actual arguments passed in call
+            if actual != expected:
+                raise SemanticError(
+                    f"Function '{expr.name}' expects {expected} argument(s), got {actual}",
+                    expr.line,
+                )
+
+            # analyze all argument expressions
+            for arg in expr.args:
+                self.analyze_expr(arg, declared_names)
+            return
+
+        # reject unrecognized expression types
+        raise SemanticError(f"Unsupported expression: {type(expr).__name__}", getattr(expr, "line", 0))
 
 
 def analyze(program: Program) -> dict[str, dict[str, Any]]:
