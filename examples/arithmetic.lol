@@ -1,4 +1,5 @@
 HAI
+WAZZUP
     I HAS A a ITZ 10
     I HAS A b ITZ 3.5
 
@@ -12,6 +13,7 @@ HAI
 
     BTW Nested arithmetic: ((3 * 4) / 2) + 1
     I HAS A complex ITZ SUM OF QUOSHUNT OF PRODUKT OF 3 AN 4 AN 2 AN 1
+BUHBYE
 
     VISIBLE sum
     VISIBLE diff

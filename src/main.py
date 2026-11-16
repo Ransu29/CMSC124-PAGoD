@@ -3,8 +3,9 @@ from pathlib import Path
 import lexer
 import parser
 from tokens import T
-
-from parser import SyntaxError
+from errors import LolRuntimeError, SemanticError, SyntaxError
+from interpreter import Interpreter
+from semantic_analyzer import SemanticAnalyzer
 
 # Gets the root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -73,7 +74,7 @@ def main():
     else:
         print("\nLexical analysis completed with 0 errors.")
 
-        # run syntax analysis
+        # run syntax analysis, semantic analysis, and interpretation
         try:
             program = parser.parse(tokens)
             print("\n--- Parse Tree (Tuples) ---")
@@ -81,8 +82,22 @@ def main():
                 print(f"    {item}")
             print("\n--- AST Representation ---")
             print(f"    {program}")
+
+            SemanticAnalyzer(program).analyze()
+            print("\nSemantic analysis completed with 0 errors.")
+
+            print("\n--- Program Output ---")
+            final_env = Interpreter(program).run()
+
+            print("\n--- Symbol Table ---")
+            for name, lol_val in final_env.snapshot().items():
+                print(f"    {name}: ({lol_val.type_name}) {lol_val.value!r}")
         except SyntaxError as e:
             print(f"\n[!] Syntax Error: {e}")
+        except SemanticError as e:
+            print(f"\n[!] Semantic Error: {e}")
+        except LolRuntimeError as e:
+            print(f"\n[!] Runtime Error: {e}")
 
 
 if __name__ == "__main__":

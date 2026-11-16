@@ -1,8 +1,10 @@
 HAI
 
-I HAS A name ITZ "Garfield"
-I HAS A age ITZ 48
-I HAS A isCat ITZ WIN
+WAZZUP
+    I HAS A name ITZ "Garfield"
+    I HAS A age ITZ 48
+    I HAS A isCat ITZ WIN
+BUHBYE
 
 VISIBLE name
 VISIBLE age

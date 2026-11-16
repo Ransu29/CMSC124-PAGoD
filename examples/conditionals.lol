@@ -1,6 +1,8 @@
 HAI
 
-I HAS A grade ITZ 85
+WAZZUP
+    I HAS A grade ITZ 85
+BUHBYE
 
 grade IS NOW A NUMBR
 

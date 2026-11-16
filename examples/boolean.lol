@@ -1,4 +1,5 @@
 HAI
+WAZZUP
     I HAS A t ITZ WIN
     I HAS A f ITZ FAIL
 
@@ -10,6 +11,7 @@ HAI
     BTW Infinite arity boolean operations
     I HAS A all_res ITZ ALL OF t AN WIN AN NOT f MKAY
     I HAS A any_res ITZ ANY OF f AN FAIL AN t MKAY
+BUHBYE
 
     VISIBLE and_res
     VISIBLE or_res
