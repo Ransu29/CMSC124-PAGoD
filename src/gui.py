@@ -9,6 +9,8 @@ import tkinter.ttk as ttk
 import customtkinter as ctk
 import lexer
 import parser
+import semantic_analyzer
+from errors import SemanticError, SyntaxError
 from tokens import T
 
 # main window class for lolcode interpreter gui
@@ -146,6 +148,10 @@ class InterpreterApp(ctk.CTk):
         for item in self.tokens_table.get_children():
             self.tokens_table.delete(item)
 
+        # clear existing rows from symbol table
+        for item in self.symbol_table.get_children():
+            self.symbol_table.delete(item)
+
         # clear console display area
         self.console.delete("1.0", "end")
 
@@ -171,12 +177,20 @@ class InterpreterApp(ctk.CTk):
                 self.console.insert("end", f"  line {err.line}: unexpected or invalid lexeme '{err.value}'\n")
             return
 
-        # run syntax analysis on token stream
+        # run syntax and semantic analysis on parsed program
         try:
-            program = parser.parse(tokens)  # build abstract syntax tree
-            self.console.insert("end", "lexical and syntax analysis completed with 0 errors\n")
-        except parser.SyntaxError as err:
+            program = parser.parse(tokens)                           # build abstract syntax tree
+            symbols = semantic_analyzer.analyze(program)             # run semantic analysis and collect symbol table
+            
+            # populate symbol table in gui with declared variables
+            for var_name, data in symbols.items():
+                self.symbol_table.insert("", "end", values=(var_name, data["value"]))
+
+            self.console.insert("end", "lexical, syntax, and semantic analysis completed with 0 errors\n")
+        except SyntaxError as err:
             self.console.insert("end", f"syntax error on line {err.line}: {err.message}\n")
+        except SemanticError as err:
+            self.console.insert("end", f"semantic error on line {err.line}: {err.message}\n")
 
     # handler to open and load lolcode file into editor
     def open_file(self):

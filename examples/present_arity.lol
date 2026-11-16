@@ -1,0 +1,13 @@
+HOW IZ I multiply YR a AN YR b
+    FOUND YR PRODUKT OF a AN b
+IF U SAY SO
+
+HAI
+
+WAZZUP
+    I HAS A result ITZ I IZ multiply YR 10 MKAY
+BUHBYE
+
+VISIBLE result
+
+KTHXBYE

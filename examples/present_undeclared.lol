@@ -1,0 +1,10 @@
+HAI
+
+WAZZUP
+    I HAS A total ITZ 100
+BUHBYE
+
+VISIBLE total
+VISIBLE score
+
+KTHXBYE
