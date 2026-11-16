@@ -24,6 +24,27 @@ class SemanticAnalyzer:
         # initalize implicit it in symbol table
         self.symbol_table["IT"] = {"type": "NOOB", "value": "WIN"}
 
+        # pre register function arities and check param names so order of declaration does not matter
+        for stmt in self.program.body:
+            if isinstance(stmt, FuncDef):
+                # reject duplicate function definitions across program
+                if stmt.name in self.function_arities:
+                    raise SemanticError(f"Function '{stmt.name}' is already declared", stmt.line)
+
+                # check parameter names for duplicates and reserved it keyword
+                seen_params: set[str] = set()                        # track parameter names seen in current fucntion
+                for param in stmt.params:
+                    # reject reserved implicit variable as parameter name
+                    if param == "IT":
+                        raise SemanticError("Cannot use reserved implicit variable 'IT' as a parameter", stmt.line)
+                    # reject duplicate parameter name in same fucntion
+                    if param in seen_params:
+                        raise SemanticError(f"Duplicate parameter '{param}' in function '{stmt.name}'", stmt.line)
+                    seen_params.add(param)
+
+                # record function arity for call validation
+                self.function_arities[stmt.name] = len(stmt.params)
+
         # analyze global declarations in wazzup section
         for decl in self.program.wazzup:
             self.analyze_decl(decl, declared_names)
