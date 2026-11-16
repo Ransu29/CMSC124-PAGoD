@@ -61,13 +61,21 @@ class SemanticAnalyzer:
         if decl.name in declared_names:
             raise SemanticError(f"Redefinition of existing variable at: '{decl.name}'", decl.line)
 
+        # determine initial literal value and type if present
+        init_val: Any = "NOOB"                                       # default uninitialized value
+        init_type: str = "NOOB"                                      # default uninitialized type
+        if isinstance(decl.value_expr, Literal):
+            # format boolean troof values as win or fail
+            init_val = "WIN" if decl.value_expr.value is True else ("FAIL" if decl.value_expr.value is False else decl.value_expr.value)
+            init_type = decl.value_expr.type_name
+
         # analyze initial value expression if present
         if decl.value_expr is not None:
             self.analyze_expr(decl.value_expr, declared_names)
 
         # record variable name as declared and store in symbol table
         declared_names.add(decl.name)
-        self.symbol_table[decl.name] = {"type": "NOOB", "value": "NOOB"}
+        self.symbol_table[decl.name] = {"type": init_type, "value": init_val}
 
     def analyze_stmt(self, stmt: Any, declared_names: set[str], *, can_gtfo: bool = False, in_function: bool = False) -> None:
         # validate statment execution context, variable scoping, and control flow
