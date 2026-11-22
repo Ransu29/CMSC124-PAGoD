@@ -1,11 +1,14 @@
 import sys
 from pathlib import Path
-import lexer
-import parser
-from tokens import T
-from errors import LolRuntimeError, SemanticError, SyntaxError
-from interpreter import Interpreter
-from semantic_analyzer import SemanticAnalyzer
+
+# ensure src directory is on search path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from core.errors import LolRuntimeError, SemanticError, SyntaxError
+from core.tokens import T
+from frontend import lexer, parser
+from runtime.interpreter import Interpreter
+from semantics.semantic_analyzer import SemanticAnalyzer
 
 # Gets the root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

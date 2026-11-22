@@ -5,7 +5,7 @@
 # - python regex: https://docs.python.org/3/library/re.html
 
 import re
-from tokens import T, Token, KEYWORDS, TYPE_NAMES
+from core.tokens import T, Token, KEYWORDS, TYPE_NAMES
 
 # literal and identifier regexes
 IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")

@@ -5,7 +5,7 @@
 
 from typing import Any, Callable
 
-from ast_nodes import (
+from core.ast_nodes import (
     Assignment,
     BinaryOp,
     BreakStmt,
@@ -27,8 +27,9 @@ from ast_nodes import (
     VarDecl,
     VariableRef,
 )
-from errors import LolRuntimeError
-from lol_types import (
+from core.errors import LolRuntimeError
+from frontend.parser import Program
+from semantics.lol_types import (
     NOOB_VAL,
     LolValue,
     cast_value,
@@ -37,7 +38,6 @@ from lol_types import (
     to_yarn,
     values_equal,
 )
-from parser import Program
 
 # keep below python's ~1000 stack limit since each call uses ~5 python frames
 MAX_RECURSION_DEPTH = 100
