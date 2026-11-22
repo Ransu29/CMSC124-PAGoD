@@ -47,11 +47,21 @@ class ProgramRun:
             cwd=Path(__file__).resolve().parents[1],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE if os.environ.get("LOLDEBUG") == "1" else subprocess.DEVNULL,
             encoding="utf-8",
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
+        if os.environ.get("LOLDEBUG") == "1":
+            Thread(target=self._forward_stderr, daemon=True).start()
         Thread(target=self._exchange, args=(source,), daemon=True).start()
+
+    def _forward_stderr(self):
+        try:
+            for line in self.process.stderr:
+                sys.stderr.write(line)
+                sys.stderr.flush()
+        except Exception:
+            pass
 
     def _enqueue(self, message):
         while not self.cancelled.is_set():

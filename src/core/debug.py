@@ -8,6 +8,7 @@ DEBUG = os.environ.get('LOLDEBUG', '0') == '1'
 def set_debug(enabled: bool) -> None:
     global DEBUG
     DEBUG = enabled
+    os.environ['LOLDEBUG'] = '1' if enabled else '0'
 
 
 def log(stage: str, message: str, depth: int = 0) -> None:
