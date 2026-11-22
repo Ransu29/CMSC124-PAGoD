@@ -1,6 +1,7 @@
 # references, lolcode spec v1 2, crafting interpreters evaluating expressions
 
 from typing import Any
+import math
 
 from core.ast_nodes import (
     BinaryOp,
@@ -12,6 +13,7 @@ from core.ast_nodes import (
     UnaryOp,
     VariableRef,
 )
+from core.debug import log
 from core.errors import LolRuntimeError
 from runtime.environment import Environment, _BreakSignal, _ReturnSignal
 from semantics.lol_types import (
@@ -229,6 +231,8 @@ class Evaluator:
         for param_name, arg_val in zip(func.params, arg_values):
             local_env.declare(param_name, arg_val, expr.line)
 
+        shown = [f'{v.type_name}:{v.value!r}' for v in arg_values]
+        log('CALL', f'line {expr.line}: {expr.name}({shown}) depth={self.runtime._call_depth + 1}', self.runtime._call_depth)
         result = NOOB_VAL
         self.runtime._call_depth += 1
         try:
@@ -240,6 +244,7 @@ class Evaluator:
         finally:
             self.runtime._call_depth -= 1
 
+        log('CALL', f'{expr.name} returned ({result.type_name}) {result.value!r}', self.runtime._call_depth)
         # assign return value to caller accumulator variable
         caller_env.set_it(result)
         return result
