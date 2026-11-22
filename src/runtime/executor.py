@@ -28,6 +28,9 @@ from semantics.lol_types import (
     values_equal,
 )
 
+#stops runaway loops (TIL FAIL / WILE WIN) from freezing the GUI
+MAX_LOOP_ITERATIONS = 10_000
+
 
 class Executor:
     # executes statments, declarations, control flow branches, loops, and io
@@ -183,23 +186,37 @@ class Executor:
         # verify loop counter exists and coerce numeric before loop entry
         coerce_numeric(env.lookup(stmt.var_name, stmt.line), stmt.line)
         delta = 1 if stmt.operation == "UPPIN" else -1
+        iteration = 0
+        log('LOOP', f'line {stmt.line}: enter {stmt.label} ({stmt.operation} {stmt.var_name} {stmt.condition_type or "no condition"})', self._depth)
 
         while True:
             if stmt.condition_type == "TIL":
                 if to_troof(self.runtime.eval_expr(stmt.condition_expr, env)).value:
+                    log('LOOP', f'{stmt.label}: TIL condition met, exiting', self._depth)
                     break
             elif stmt.condition_type == "WILE":
                 if not to_troof(self.runtime.eval_expr(stmt.condition_expr, env)).value:
+                    log('LOOP', f'{stmt.label}: WILE condition false, exiting', self._depth)
                     break
+
+            iteration += 1
+            if iteration > MAX_LOOP_ITERATIONS:
+                raise LolRuntimeError(
+                    f"Loop '{stmt.label}' exceeded {MAX_LOOP_ITERATIONS} iterations (possible infinite loop)",
+                    stmt.line,
+                )
+            log('LOOP', f'{stmt.label}: iteration {iteration}, {stmt.var_name}={env.lookup(stmt.var_name).value!r}', self._depth)
 
             try:
                 self.execute_block(stmt.body, env)
             except _BreakSignal:
+                log('LOOP', f'{stmt.label}: GTFO at iteration {iteration}', self._depth)
                 break
 
             current_num = coerce_numeric(env.lookup(stmt.var_name, stmt.line), stmt.line)
             env.assign(stmt.var_name, LolValue(current_num.type_name, current_num.value + delta), stmt.line)
             self.runtime._notify_symbols()
+        log('LOOP', f'{stmt.label}: finished after {iteration} iteration(s)', self._depth)
 
 
 def execute_stmt(stmt: Any, env: Environment, runtime: Any) -> None:
