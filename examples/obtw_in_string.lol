@@ -1,0 +1,3 @@
+HAI
+VISIBLE "OBTW is just text" BTW OBTW here
+KTHXBYE

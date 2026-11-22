@@ -1,0 +1,4 @@
+HAI
+OBTW never ends
+VISIBLE "hi"
+KTHXBYE
