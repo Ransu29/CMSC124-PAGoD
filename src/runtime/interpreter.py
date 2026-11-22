@@ -1,34 +1,24 @@
-# references:
-# - lolcode spec v1.2: https://github.com/justinmeza/lolcode-spec/blob/master/v1.2/lolcode-spec-v1.2.md
-# - crafting interpreters evaluating expressions: https://craftinginterpreters.com/evaluating-expressions.html
-# - crafting interpreters statements and state: https://craftinginterpreters.com/statements-and-state.html
+# references, lolcode spec v1 2, crafting interpreters statements and state
 
 from typing import Any, Callable
 
 from core.ast_nodes import (
     Assignment,
-    BinaryOp,
     BreakStmt,
     ExprStmt,
-    FuncCall,
     FuncDef,
     IfStmt,
-    InfiniteBoolExpr,
     InputStmt,
-    Literal,
     LoopStmt,
     PrintStmt,
     RecastStmt,
     ReturnStmt,
-    SmooshExpr,
     SwitchStmt,
-    TypecastExpr,
-    UnaryOp,
     VarDecl,
-    VariableRef,
 )
 from core.errors import LolRuntimeError
 from runtime.environment import Environment, _BreakSignal, _ReturnSignal
+from runtime.evaluator import Evaluator
 from frontend.parser import Program
 from semantics.lol_types import (
     NOOB_VAL,
@@ -36,31 +26,16 @@ from semantics.lol_types import (
     cast_value,
     coerce_numeric,
     to_troof,
-    to_yarn,
     values_equal,
 )
 
-# keep below python's ~1000 stack limit since each call uses ~5 python frames
-MAX_RECURSION_DEPTH = 100
-
-ARITHMETIC_OPS = {
-    "SUM OF",
-    "DIFF OF",
-    "PRODUKT OF",
-    "QUOSHUNT OF",
-    "MOD OF",
-    "BIGGR OF",
-    "SMALLR OF",
-}
-
-BOOLEAN_BINARY_OPS = {"BOTH OF", "EITHER OF", "WON OF"}
 
 def _default_output(text: str) -> None:
     print(text, end="")
 
 
 class Interpreter:
-    # tree-walking AST evaluator for LOLCODE programs
+    # tree walking runtime coordinator for lolcode programs
 
     def __init__(
         self,
@@ -85,25 +60,26 @@ class Interpreter:
         self.global_env = Environment()
         self.functions: dict[str, FuncDef] = {}
         self._call_depth = 0
+        self.evaluator = Evaluator(self)
 
     def run(self) -> Environment:
-        # reset runtime state so run() is repeatable
+        # reset runtime state before execution
         self.global_env = Environment()
         self.functions = {}
         self._call_depth = 0
 
-        # register top-level functions before executing statements
+        # register top level fucntions before executing statments
         for stmt in self.program.body:
             if isinstance(stmt, FuncDef):
                 if stmt.name in self.functions:
                     raise LolRuntimeError(f"Function '{stmt.name}' is already defined", stmt.line)
                 self.functions[stmt.name] = stmt
 
-        # declare WAZZUP variables first in global scope
+        # declare wazzup variables first in global scope
         for decl in self.program.wazzup:
             self.exec_stmt(decl, self.global_env)
 
-        # execute top-level body statements
+        # execute top level body statments
         for stmt in self.program.body:
             self.exec_stmt(stmt, self.global_env)
 
@@ -116,18 +92,16 @@ class Interpreter:
 
     # --- Statement Execution ---
 
-    def _exec_block(self, statements: list[Any], env: Environment) -> None:
+    def exec_block(self, statements: list[Any], env: Environment) -> None:
+        # execute block of statments sequentially
         for stmt in statements:
             self.exec_stmt(stmt, env)
 
+    def _exec_block(self, statements: list[Any], env: Environment) -> None:
+        self.exec_block(statements, env)
+
     def _concat_operands_as_yarn(self, operands: list[Any], env: Environment, line: int) -> str:
-        # evaluate each operand in order and convert to YARN text without implicit NOOB casting
-        parts: list[str] = []
-        for operand in operands:
-            val = self.eval_expr(operand, env)
-            yarn_val = to_yarn(val, explicit=False, line=line)
-            parts.append(yarn_val.value)
-        return "".join(parts)
+        return self.evaluator.concat_yarn(operands, env, line)
 
     def exec_stmt(self, stmt: Any, env: Environment) -> None:
         if isinstance(stmt, VarDecl):
@@ -152,7 +126,7 @@ class Interpreter:
             return
 
         if isinstance(stmt, PrintStmt):
-            text = self._concat_operands_as_yarn(stmt.operands, env, stmt.line)
+            text = self.evaluator.concat_yarn(stmt.operands, env, stmt.line)
             if not stmt.suppress_newline:
                 text += "\n"
             self.output_fn(text)
@@ -185,7 +159,7 @@ class Interpreter:
             return
 
         if isinstance(stmt, FuncDef):
-            # functions are pre-registered during run() and executed only when called
+            # functions are pre registered during run and executed only when called
             return
 
         if isinstance(stmt, ReturnStmt):
@@ -201,16 +175,16 @@ class Interpreter:
 
     def _exec_if(self, stmt: IfStmt, env: Environment) -> None:
         if to_troof(env.get_it()).value:
-            self._exec_block(stmt.then_body, env)
+            self.exec_block(stmt.then_body, env)
             return
 
         for cond_expr, mebbe_body in stmt.mebbe_clauses:
             if to_troof(self.eval_expr(cond_expr, env)).value:
-                self._exec_block(mebbe_body, env)
+                self.exec_block(mebbe_body, env)
                 return
 
         if stmt.else_body:
-            self._exec_block(stmt.else_body, env)
+            self.exec_block(stmt.else_body, env)
 
     def _exec_switch(self, stmt: SwitchStmt, env: Environment) -> None:
         target = env.get_it()
@@ -223,23 +197,20 @@ class Interpreter:
 
         try:
             if match_index is not None:
-                # LOLCODE switch cases fall through until GTFO or OIC
+                # lolcode switch cases fall through until gtfo or oic
                 for case in stmt.cases[match_index:]:
-                    self._exec_block(case.body, env)
+                    self.exec_block(case.body, env)
                 if stmt.default_case is not None:
-                    self._exec_block(stmt.default_case, env)
+                    self.exec_block(stmt.default_case, env)
             elif stmt.default_case is not None:
-                self._exec_block(stmt.default_case, env)
+                self.exec_block(stmt.default_case, env)
         except _BreakSignal:
             return
 
     def _exec_loop(self, stmt: LoopStmt, env: Environment) -> None:
         # verify loop variable exists and is numeric before entering the loop
         coerce_numeric(env.lookup(stmt.var_name, stmt.line), stmt.line)
-        if stmt.operation == "UPPIN":
-            delta = 1
-        else:
-            delta = -1
+        delta = 1 if stmt.operation == "UPPIN" else -1
 
         while True:
             if stmt.condition_type == "TIL":
@@ -250,7 +221,7 @@ class Interpreter:
                     break
 
             try:
-                self._exec_block(stmt.body, env)
+                self.exec_block(stmt.body, env)
             except _BreakSignal:
                 break
 
@@ -258,181 +229,11 @@ class Interpreter:
             env.assign(stmt.var_name, LolValue(current_num.type_name, current_num.value + delta), stmt.line)
             self._notify_symbols()
 
-    # --- Expression Evaluation ---
+    # --- Expression Evaluation Delegation ---
 
     def eval_expr(self, expr: Any, env: Environment) -> LolValue:
-        if isinstance(expr, Literal):
-            return LolValue(expr.type_name, expr.value)
-
-        if isinstance(expr, VariableRef):
-            return env.lookup(expr.name, expr.line)
-
-        if isinstance(expr, UnaryOp):
-            operand_troof = to_troof(self.eval_expr(expr.operand, env))
-            return LolValue("TROOF", not operand_troof.value)
-
-        if isinstance(expr, BinaryOp):
-            return self._eval_binary(expr, env)
-
-        if isinstance(expr, InfiniteBoolExpr):
-            return self._eval_infinite_bool(expr, env)
-
-        if isinstance(expr, SmooshExpr):
-            text = self._concat_operands_as_yarn(expr.operands, env, expr.line)
-            return LolValue("YARN", text)
-
-        if isinstance(expr, TypecastExpr):
-            val = self.eval_expr(expr.expr, env)
-            return cast_value(val, expr.target_type, explicit=True, line=expr.line)
-
-        if isinstance(expr, FuncCall):
-            return self._eval_func_call(expr, env)
-
-        raise LolRuntimeError(f"Unsupported expression: {type(expr).__name__}", getattr(expr, "line", 0))
-
-    def _eval_binary(self, expr: BinaryOp, env: Environment) -> LolValue:
-        if expr.op in BOOLEAN_BINARY_OPS:
-            return self._eval_boolean_binary(expr, env)
-
-        left = self.eval_expr(expr.left, env)
-        right = self.eval_expr(expr.right, env)
-
-        if expr.op in ARITHMETIC_OPS:
-            return self._eval_arithmetic(expr.op, left, right, expr.line)
-
-        if expr.op == "BOTH SAEM":
-            return LolValue("TROOF", values_equal(left, right))
-        if expr.op == "DIFFRINT":
-            return LolValue("TROOF", not values_equal(left, right))
-
-        raise LolRuntimeError(f"Unknown binary operator '{expr.op}'", expr.line)
-
-    def _eval_boolean_binary(self, expr: BinaryOp, env: Environment) -> LolValue:
-        left_val = self.eval_expr(expr.left, env)
-        left_bool = to_troof(left_val).value
-
-        # short-circuit BOTH OF and EITHER OF before evaluating the right operand
-        if expr.op == "BOTH OF":
-            if not left_bool:
-                return LolValue("TROOF", False)
-            right_bool = to_troof(self.eval_expr(expr.right, env)).value
-            return LolValue("TROOF", right_bool)
-
-        if expr.op == "EITHER OF":
-            if left_bool:
-                return LolValue("TROOF", True)
-            right_bool = to_troof(self.eval_expr(expr.right, env)).value
-            return LolValue("TROOF", right_bool)
-
-        if expr.op == "WON OF":
-            right_bool = to_troof(self.eval_expr(expr.right, env)).value
-            return LolValue("TROOF", left_bool != right_bool)
-
-        raise LolRuntimeError(f"Unknown boolean operator '{expr.op}'", expr.line)
-
-    def _eval_arithmetic(self, op: str, left: LolValue, right: LolValue, line: int) -> LolValue:
-        l_num = coerce_numeric(left, line)
-        r_num = coerce_numeric(right, line)
-
-        use_float = l_num.type_name == "NUMBAR" or r_num.type_name == "NUMBAR"
-        if use_float:
-            a = float(l_num.value)
-            b = float(r_num.value)
-        else:
-            a = int(l_num.value)
-            b = int(r_num.value)
-
-        if op == "SUM OF":
-            res = a + b
-        elif op == "DIFF OF":
-            res = a - b
-        elif op == "PRODUKT OF":
-            res = a * b
-        elif op == "QUOSHUNT OF":
-            if b == 0:
-                raise LolRuntimeError("Division by zero", line)
-            if use_float:
-                res = a / b
-            else:
-                # two NUMBR operands produce truncating integer quotient
-                res = int(a / b)
-        elif op == "MOD OF":
-            if b == 0:
-                raise LolRuntimeError("Modulo by zero", line)
-            if use_float:
-                res = a % b
-            else:
-                # truncating remainder matches integer QUOSHUNT OF behavior for negative values
-                res = a - int(a / b) * b
-        elif op == "BIGGR OF":
-            if a >= b:
-                res = a
-            else:
-                res = b
-        elif op == "SMALLR OF":
-            if a <= b:
-                res = a
-            else:
-                res = b
-        else:
-            raise LolRuntimeError(f"Unknown arithmetic operator '{op}'", line)
-
-        if use_float:
-            return LolValue("NUMBAR", res)
-        return LolValue("NUMBR", res)
-
-    def _eval_infinite_bool(self, expr: InfiniteBoolExpr, env: Environment) -> LolValue:
-        if expr.op == "ALL OF":
-            for operand in expr.operands:
-                if not to_troof(self.eval_expr(operand, env)).value:
-                    return LolValue("TROOF", False)
-            return LolValue("TROOF", True)
-
-        if expr.op == "ANY OF":
-            for operand in expr.operands:
-                if to_troof(self.eval_expr(operand, env)).value:
-                    return LolValue("TROOF", True)
-            return LolValue("TROOF", False)
-
-        raise LolRuntimeError(f"Unknown boolean operator '{expr.op}'", expr.line)
-
-    def _eval_func_call(self, expr: FuncCall, caller_env: Environment) -> LolValue:
-        func = self.functions.get(expr.name)
-        if func is None:
-            raise LolRuntimeError(f"Function '{expr.name}' is not defined", expr.line)
-
-        if len(expr.args) != len(func.params):
-            raise LolRuntimeError(
-                f"Function '{expr.name}' expects {len(func.params)} argument(s), got {len(expr.args)}",
-                expr.line,
-            )
-
-        if self._call_depth >= MAX_RECURSION_DEPTH:
-            raise LolRuntimeError("Maximum recursion depth exceeded", expr.line)
-
-        # evaluate all argument expressions in caller scope before entering isolated function scope
-        arg_values: list[LolValue] = []
-        for arg_expr in expr.args:
-            arg_values.append(self.eval_expr(arg_expr, caller_env))
-
-        local_env = Environment(parent=None)
-        for param_name, arg_val in zip(func.params, arg_values):
-            local_env.declare(param_name, arg_val, expr.line)
-
-        result = NOOB_VAL
-        self._call_depth += 1
-        try:
-            self._exec_block(func.body, local_env)
-        except _ReturnSignal as ret:
-            result = ret.value
-        except _BreakSignal:
-            result = NOOB_VAL
-        finally:
-            self._call_depth -= 1
-
-        # return values are also stored in caller's implicit IT variable
-        caller_env.set_it(result)
-        return result
+        # delegate expression evaluation to evaluator module
+        return self.evaluator.eval(expr, env)
 
 
 def interpret(
