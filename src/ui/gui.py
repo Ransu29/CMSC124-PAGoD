@@ -29,6 +29,9 @@ class InterpreterApp(ctk.CTk):
         # set theme color palette for widgets
         ctk.set_default_color_theme("blue")
 
+        # track active file path on disk
+        self.current_file_path: str | None = None
+
         # configure three columns for editor, tokens, symbol table
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
@@ -69,9 +72,29 @@ class InterpreterApp(ctk.CTk):
         self.editor_frame.grid_columnconfigure(0, weight=1)
         self.editor_frame.grid_rowconfigure(2, weight=1)
 
-        # button to trigger file dialog
-        self.file_button = ctk.CTkButton(self.editor_frame, text="Open File", command=self.open_file)  # file picker button
-        self.file_button.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        # container frame for file action toolbar buttons
+        self.toolbar_frame = ctk.CTkFrame(self.editor_frame, fg_color="transparent")
+        self.toolbar_frame.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
+        self.toolbar_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        # toolbar buttons for new, open, save, and save as
+        self.new_btn = ctk.CTkButton(self.toolbar_frame, text="New", width=60, command=self.new_file)
+        self.new_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
+
+        self.open_btn = ctk.CTkButton(self.toolbar_frame, text="Open", width=60, command=self.open_file)
+        self.open_btn.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
+
+        self.save_btn = ctk.CTkButton(self.toolbar_frame, text="Save", width=60, command=self.save_file)
+        self.save_btn.grid(row=0, column=2, padx=2, pady=2, sticky="ew")
+
+        self.save_as_btn = ctk.CTkButton(self.toolbar_frame, text="Save As", width=70, command=self.save_as_file)
+        self.save_as_btn.grid(row=0, column=3, padx=2, pady=2, sticky="ew")
+
+        # bind keyboard shortcuts for file operations
+        self.bind("<Control-n>", self.new_file)
+        self.bind("<Control-o>", self.open_file)
+        self.bind("<Control-s>", self.save_file)
+        self.bind("<Control-S>", self.save_as_file)
 
         # label displaying current opened file name
         self.file_label = ctk.CTkLabel(self.editor_frame, text="No file selected")  # file status label
@@ -259,23 +282,56 @@ class InterpreterApp(ctk.CTk):
             self.append_console(f"\n[{phase}] {err.message}\n")
 
     # handler to open and load lolcode file into editor
-    def open_file(self):
-        file_path = filedialog.askopenfilename(filetypes=[("LOLCode files", "*.lol"), ("All files", "*.*")])  # get file path
-        
-        # check if file selection was cancelled, return if empty
+    def new_file(self, event=None):
+        # clear editor content and reset file path tracker
+        self.editor.delete("1.0", "end")
+        self.current_file_path = None
+        self.file_label.configure(text="Untitled.lol")
+        return "break"
+
+    def open_file(self, event=None):
+        # prompt user to select lolcode file from disk
+        file_path = filedialog.askopenfilename(filetypes=[("LOLCode files", "*.lol"), ("All files", "*.*")])
         if not file_path:
-            return
+            return "break"
 
-        # read content from selected file using utf-8 encoding
         with open(file_path, "r", encoding="utf-8") as file:
-            content = file.read()  # read full text
+            content = file.read()
 
-        # update editor text area with file content
         self.editor.delete("1.0", "end")
         self.editor.insert("1.0", content)
-        
-        # display opened file path on label
+        self.current_file_path = file_path
         self.file_label.configure(text=file_path)
+        return "break"
+
+    def save_file(self, event=None):
+        # save current editor text to active file or prompt save as
+        if self.current_file_path is None:
+            return self.save_as_file()
+
+        content = self.editor.get("1.0", "end-1c")
+        with open(self.current_file_path, "w", encoding="utf-8") as file:
+            file.write(content)
+
+        self.file_label.configure(text=self.current_file_path)
+        return "break"
+
+    def save_as_file(self, event=None):
+        # prompt user for target file path and save editor text
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".lol",
+            filetypes=[("LOLCode files", "*.lol"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return "break"
+
+        content = self.editor.get("1.0", "end-1c")
+        with open(file_path, "w", encoding="utf-8") as file:
+            file.write(content)
+
+        self.current_file_path = file_path
+        self.file_label.configure(text=file_path)
+        return "break"
 
 # entry point fucntion to start gui
 def main():
