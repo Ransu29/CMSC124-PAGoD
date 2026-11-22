@@ -1,0 +1,28 @@
+HAI
+WAZZUP
+I HAS A i ITZ 0
+I HAS A j ITZ 0
+I HAS A total ITZ 0
+I HAS A unset
+BUHBYE
+IM IN YR outer UPPIN YR i TIL BOTH SAEM i AN 3
+j R 0
+IM IN YR inner UPPIN YR j TIL BOTH SAEM j AN 3
+BOTH SAEM i AN j
+O RLY?
+YA RLY
+BOTH SAEM i AN 1
+O RLY?
+YA RLY
+VISIBLE "center " + i
+NO WAI
+VISIBLE "diag " + i
+OIC
+NO WAI
+total R SUM OF total AN 1
+OIC
+IM OUTTA YR inner
+IM OUTTA YR outer
+VISIBLE "off-diagonal count: " + total
+VISIBLE unset
+KTHXBYE

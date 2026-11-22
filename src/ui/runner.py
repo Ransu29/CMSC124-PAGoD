@@ -158,7 +158,7 @@ def _worker():
         def rows():
             for name, value in pending_symbols.items():
                 if value.type_name == "NOOB":
-                    display = "None"
+                    display = "NOOB"
                 elif value.type_name == "TROOF":
                     display = "WIN" if value.value else "FAIL"
                 elif value.type_name == "YARN":

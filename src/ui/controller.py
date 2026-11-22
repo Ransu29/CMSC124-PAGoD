@@ -2,7 +2,7 @@
 
 from typing import Callable
 
-from core.errors import LexicalError, LolcodeError
+from core.errors import LexicalError, LolRuntimeError, LolcodeError
 from core.tokens import T, Token
 from frontend import lexer, parser
 from runtime.interpreter import Interpreter
@@ -20,6 +20,15 @@ def format_lol_value(lol_val: LolValue) -> str:
     if lol_val.type_name == "YARN":
         return f'"{lol_val.value}" (YARN)'
     return f"{lol_val.value} ({lol_val.type_name})"
+
+
+def describe_lexical_error(tok: Token) -> str:
+    #turns an ERROR token into a message the console can show
+    if tok.value[:1] in ('"', "“"):
+        return f"Unclosed string literal {tok.value}"
+    if tok.value.startswith("OBTW ("):
+        return f"Multi-line comment {tok.value}"
+    return f"Unexpected or invalid lexeme '{tok.value}'"
 
 
 class InterpreterController:
@@ -68,9 +77,7 @@ class InterpreterController:
         lex_errors = [t for t in tokens if t.type == T.ERROR]
         if lex_errors:
             for err in lex_errors:
-                self.on_error(
-                    LexicalError(f"Unexpected or invalid lexeme '{err.value}'", err.line)
-                )
+                self.on_error(LexicalError(describe_lexical_error(err), err.line))
             return False
 
         try:
@@ -85,4 +92,10 @@ class InterpreterController:
             return True
         except LolcodeError as err:
             self.on_error(err)
+            return False
+        except RecursionError:
+            self.on_error(LolRuntimeError('Stack overflow: nesting or recursion is too deep'))
+            return False
+        except Exception as exc:  #last-resort net so the GUI never fails silently
+            self.on_error(LolRuntimeError(f'Internal error: {type(exc).__name__}: {exc}'))
             return False

@@ -1,5 +1,6 @@
 # scope manager and flow control signals for runtime
 
+from core.debug import log
 from core.errors import LolRuntimeError
 from semantics.lol_types import NOOB_VAL, LolValue
 
@@ -28,6 +29,7 @@ class Environment:
         # check duplicate delcaration in current scope
         if name in self.bindings:
             raise LolRuntimeError(f"Variable '{name}' is already declared", line)
+        log('ENV', f'declare {name} = ({value.type_name}) {value.value!r}')
         self.bindings[name] = value  # store value in bindings dictionary
 
     # reassign existing variable walking up parent chain
@@ -36,6 +38,7 @@ class Environment:
         # traverse parent chain to find existing symbol and reassign
         while env is not None:
             if name in env.bindings:
+                log('ENV', f'assign {name} = ({value.type_name}) {value.value!r}')
                 env.bindings[name] = value
                 return
             env = env.parent
@@ -57,6 +60,7 @@ class Environment:
 
     # update implicit accumulator value in current scope
     def set_it(self, value: LolValue) -> None:
+        log('ENV', f'IT <- ({value.type_name}) {value.value!r}')
         self.bindings["IT"] = value
 
     # return shallow copy of scope bindings dictionary for inspection

@@ -36,7 +36,8 @@ def _format_numbar(num: float) -> str:
         return f"{raw}.0"
 
     whole, frac = raw.split(".", 1)
-    return f"{whole}.{frac[:2]}"
+    result = f"{whole}.{frac[:2]}"
+    return "0.00" if result == "-0.00" else result
 
 
 def to_troof(val: LolValue) -> LolValue:

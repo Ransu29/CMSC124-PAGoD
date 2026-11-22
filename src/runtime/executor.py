@@ -16,6 +16,7 @@ from core.ast_nodes import (
     SwitchStmt,
     VarDecl,
 )
+from core.debug import log
 from core.errors import LolRuntimeError
 from runtime.environment import Environment, _BreakSignal, _ReturnSignal
 from semantics.lol_types import (
@@ -27,18 +28,29 @@ from semantics.lol_types import (
     values_equal,
 )
 
+#stops runaway loops (TIL FAIL / WILE WIN) from freezing the GUI
+MAX_LOOP_ITERATIONS = 10_000
+
 
 class Executor:
     # executes statments, declarations, control flow branches, loops, and io
     def __init__(self, runtime: Any):
         self.runtime = runtime                                       # reference to runtime coordinator
+        self._depth = 0                                              # block depth, only used to indent logs
 
     def execute_block(self, statements: list[Any], env: Environment) -> None:
         # execute block of statments sequentially
-        for stmt in statements:
-            self.execute(stmt, env)
+        self._depth += 1
+        log('EXEC', f'enter block ({len(statements)} stmt)', self._depth)
+        try:
+            for stmt in statements:
+                self.execute(stmt, env)
+        finally:
+            log('EXEC', 'exit block', self._depth)
+            self._depth -= 1
 
     def execute(self, stmt: Any, env: Environment) -> None:
+        log('EXEC', f'line {getattr(stmt, "line", 0)}: {type(stmt).__name__}', self._depth)
         # execute variable delcaration with optional initial value
         if isinstance(stmt, VarDecl):
             init_val = NOOB_VAL
@@ -65,7 +77,8 @@ class Executor:
 
         # execute print statment with optional newline
         if isinstance(stmt, PrintStmt):
-            text = self.runtime.evaluator.concat_yarn(stmt.operands, env, stmt.line)
+            text = self.runtime.evaluator.concat_yarn(stmt.operands, env, stmt.line, noob_as_text=True)
+            log('EXEC', f'VISIBLE output: {text!r}', self._depth)
             if not stmt.suppress_newline:
                 text += "\n"
             self.runtime.output_fn(text)
@@ -120,20 +133,26 @@ class Executor:
         raise LolRuntimeError(f"Unsupported statement: {type(stmt).__name__}", getattr(stmt, "line", 0))
 
     def _exec_if(self, stmt: IfStmt, env: Environment) -> None:
-        # execute then block when accumulator troof is true
-        if to_troof(env.get_it()).value:
+        it_val = env.get_it()
+        truthy = to_troof(it_val).value
+        log('IF', f'line {stmt.line}: IT=({it_val.type_name}) {it_val.value!r} -> {truthy}', self._depth)
+        if truthy:
+            log('IF', 'taking YA RLY', self._depth)
             self.execute_block(stmt.then_body, env)
             return
 
-        # evaluate mebbe conditional branches sequentially
-        for cond_expr, mebbe_body in stmt.mebbe_clauses:
-            if to_troof(self.runtime.eval_expr(cond_expr, env)).value:
+        for number, (cond_expr, mebbe_body) in enumerate(stmt.mebbe_clauses, start=1):
+            cond = to_troof(self.runtime.eval_expr(cond_expr, env)).value
+            log('IF', f'MEBBE #{number} -> {cond}', self._depth)
+            if cond:
                 self.execute_block(mebbe_body, env)
                 return
 
-        # execute else block fallback
         if stmt.else_body:
+            log('IF', 'taking NO WAI', self._depth)
             self.execute_block(stmt.else_body, env)
+        else:
+            log('IF', 'no branch taken', self._depth)
 
     def _exec_switch(self, stmt: SwitchStmt, env: Environment) -> None:
         target = env.get_it()
@@ -143,6 +162,12 @@ class Executor:
             if values_equal(target, case_val):
                 match_index = idx
                 break
+
+        if match_index is not None:
+            outcome = f'matched OMG #{match_index + 1}'
+        else:
+            outcome = 'no match, using OMGWTF' if stmt.default_case is not None else 'no match and no OMGWTF'
+        log('SWITCH', f'line {stmt.line}: IT={target.value!r} -> {outcome}', self._depth)
 
         try:
             if match_index is not None:
@@ -154,29 +179,44 @@ class Executor:
             elif stmt.default_case is not None:
                 self.execute_block(stmt.default_case, env)
         except _BreakSignal:
+            log('SWITCH', 'GTFO leaves the switch', self._depth)
             return
 
     def _exec_loop(self, stmt: LoopStmt, env: Environment) -> None:
         # verify loop counter exists and coerce numeric before loop entry
         coerce_numeric(env.lookup(stmt.var_name, stmt.line), stmt.line)
         delta = 1 if stmt.operation == "UPPIN" else -1
+        iteration = 0
+        log('LOOP', f'line {stmt.line}: enter {stmt.label} ({stmt.operation} {stmt.var_name} {stmt.condition_type or "no condition"})', self._depth)
 
         while True:
             if stmt.condition_type == "TIL":
                 if to_troof(self.runtime.eval_expr(stmt.condition_expr, env)).value:
+                    log('LOOP', f'{stmt.label}: TIL condition met, exiting', self._depth)
                     break
             elif stmt.condition_type == "WILE":
                 if not to_troof(self.runtime.eval_expr(stmt.condition_expr, env)).value:
+                    log('LOOP', f'{stmt.label}: WILE condition false, exiting', self._depth)
                     break
+
+            iteration += 1
+            if iteration > MAX_LOOP_ITERATIONS:
+                raise LolRuntimeError(
+                    f"Loop '{stmt.label}' exceeded {MAX_LOOP_ITERATIONS} iterations (possible infinite loop)",
+                    stmt.line,
+                )
+            log('LOOP', f'{stmt.label}: iteration {iteration}, {stmt.var_name}={env.lookup(stmt.var_name).value!r}', self._depth)
 
             try:
                 self.execute_block(stmt.body, env)
             except _BreakSignal:
+                log('LOOP', f'{stmt.label}: GTFO at iteration {iteration}', self._depth)
                 break
 
             current_num = coerce_numeric(env.lookup(stmt.var_name, stmt.line), stmt.line)
             env.assign(stmt.var_name, LolValue(current_num.type_name, current_num.value + delta), stmt.line)
             self.runtime._notify_symbols()
+        log('LOOP', f'{stmt.label}: finished after {iteration} iteration(s)', self._depth)
 
 
 def execute_stmt(stmt: Any, env: Environment, runtime: Any) -> None:

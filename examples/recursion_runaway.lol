@@ -1,0 +1,10 @@
+HAI
+WAZZUP
+I HAS A r
+BUHBYE
+r R I IZ forever YR 1 MKAY
+KTHXBYE
+
+HOW IZ I forever YR n
+FOUND YR I IZ forever YR SUM OF n AN 1 MKAY
+IF U SAY SO

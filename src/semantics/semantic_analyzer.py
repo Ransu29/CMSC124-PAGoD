@@ -4,6 +4,7 @@
 
 from typing import Any
 from core.ast_nodes import *
+from core.debug import log
 from core.errors import SemanticError
 from frontend.parser import Program
 from semantics.lol_types import VALID_TYPES
@@ -53,6 +54,7 @@ class SemanticAnalyzer:
         for stmt in self.program.body:
             self.analyze_stmt(stmt, declared_names)
 
+        log('SEMANTIC', f'analysis done: {len(self.symbol_table)} symbol(s), {len(self.function_arities)} function(s)')
         return self.symbol_table
 
     def analyze_decl(self, decl: VarDecl, declared_names: set[str]) -> None:
@@ -78,6 +80,7 @@ class SemanticAnalyzer:
 
     def analyze_stmt(self, stmt: Any, declared_names: set[str], *, can_gtfo: bool = False, in_function: bool = False) -> None:
         # validate statment execution context, variable scoping, and control flow
+        log('SEMANTIC', f'line {getattr(stmt, "line", 0)}: {type(stmt).__name__} (can_gtfo={can_gtfo}, in_function={in_function})')
 
         if isinstance(stmt, Assignment):
             # verify target variable is declared before assignment

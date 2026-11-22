@@ -25,10 +25,32 @@ def is_keyword_boundary(line: str, end_pos: int, keyword: str) -> bool:
         return not (next_char.isalnum() or next_char == "_")
     return True
 
+def mask_strings_and_comment(line: str) -> str:
+    #blank out string literals and drop the BTW tail so keyword checks only see real code
+    out: list[str] = []
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if ch in ('"', "“"):
+            closing = '"' if ch == '"' else "”"
+            end = line.find(closing, i + 1)
+            if end == -1:
+                break
+            out.append(" " * (end - i + 1))
+            i = end + 1
+            continue
+        prev_is_word = i > 0 and (line[i - 1].isalnum() or line[i - 1] == "_")
+        if line.startswith("BTW", i) and not prev_is_word and is_keyword_boundary(line, i + 3, "BTW"):
+            break
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
 def tokenize(code: str) -> list[Token]:
     tokens: list[Token] = []
     lines = code.splitlines()
     in_multiline_comment = False
+    comment_start_line = 0
 
     for line_index, raw_line in enumerate(lines, start=1):
         stripped_line = raw_line.strip()
@@ -45,7 +67,7 @@ def tokenize(code: str) -> list[Token]:
                 in_multiline_comment = False
             continue
 
-        if stripped_line.startswith("OBTW"):
+        if re.match(r"OBTW\b", stripped_line):
             # check for same-line tldr
             if "TLDR" in stripped_line:
                 after_tldr = stripped_line.split("TLDR", 1)[1].strip()
@@ -53,10 +75,11 @@ def tokenize(code: str) -> list[Token]:
                     tokens.append(Token(T.ERROR, raw_line, line_index))
                 continue
             in_multiline_comment = True
+            comment_start_line = line_index
             continue
 
         # reject obtw placed after statements on the same line
-        if "OBTW" in stripped_line and not stripped_line.startswith("OBTW"):
+        if re.search(r"\bOBTW\b", mask_strings_and_comment(stripped_line)):
             tokens.append(Token(T.ERROR, raw_line, line_index))
             continue
 
@@ -81,9 +104,8 @@ def tokenize(code: str) -> list[Token]:
                 quote_char = raw_line[pos]
                 quote_end = raw_line.find(closing_quote, pos + 1)
                 if quote_end == -1:
-                    # unclosed string literal error
-                    line_tokens.append(Token(T.STRING_DELIMITER, quote_char, line_index))
-                    line_tokens.append(Token(T.ERROR, raw_line[pos + 1:], line_index))
+                    # unclosed string literal: one ERROR token holding the opening quote and the rest of the line
+                    line_tokens.append(Token(T.ERROR, raw_line[pos:], line_index))
                     pos = line_length
                 else:
                     line_tokens.append(Token(T.STRING_DELIMITER, quote_char, line_index))
@@ -140,6 +162,9 @@ def tokenize(code: str) -> list[Token]:
         if line_tokens:
             line_tokens.append(Token(T.NEWLINE, "\n", line_index))
             tokens.extend(line_tokens)
+
+    if in_multiline_comment:
+        tokens.append(Token(T.ERROR, f'OBTW (line {comment_start_line}, no matching TLDR)', comment_start_line))
 
     # append end-of-file token
     eof_line = len(lines) if lines else 1
