@@ -1,440 +1,401 @@
-# references:
-# - customtkinter window documentation: https://customtkinter.tomschimansky.com/documentation/windows/
-# - customtkinter simple example: https://github.com/TomSchimansky/CustomTkinter/blob/master/examples/simple_example.py
-# - python tkinter filedialog: https://docs.python.org/3/library/dialog.html
-# - python tkinter ttk treeview: https://docs.python.org/3/library/tkinter.ttk.html
+"""Desktop workspace for editing and running LOLCODE programs."""
 
 import os
-import tkinter.filedialog as filedialog
-import tkinter.messagebox as messagebox
-import tkinter.ttk as ttk
+from queue import Empty
+from subprocess import TimeoutExpired
+from time import monotonic
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
 import customtkinter as ctk
-from core.errors import LexicalError, LolRuntimeError, SemanticError, SyntaxError
-from core.tokens import T
-from ui.controller import InterpreterController, format_lol_value
+from tkinter_icons import MaterialIcon
 
-# main window class for lolcode interpreter gui
+from ui.console import INPUT_START, OutputConsole
+from ui.editor import MONO, SourceEditor, set_scrollbar
+from ui.runner import ProgramRun
+from ui.tables import ResultsTable
+from ui.tabs import FileTabStrip
+from ui.theme import PALETTES, load_theme, preferences_path, save_theme
+
+
+UI_FONT = ("Segoe UI", 9)
+FILE_GLYPHS = {
+    "New": "file-plus-outline",
+    "Open": "folder-open-outline",
+    "Save": "content-save-outline",
+    "Save As": "content-save-edit-outline",
+}
+
+
+def tooltip(widget, text):
+    """Show the action/shortcut or full document path after a short hover."""
+    window = None
+    timer = None
+
+    def show():
+        nonlocal window, timer
+        timer = None
+        window = tk.Toplevel(widget)
+        window.wm_overrideredirect(True)
+        window.geometry(f"+{widget.winfo_rootx() + 12}+{widget.winfo_rooty() + widget.winfo_height()}")
+        content = {"textvariable": text} if isinstance(text, tk.Variable) else {"text": text}
+        ttk.Label(window, style="Hint.TLabel", **content).pack()
+
+    def hide(_event):
+        nonlocal timer, window
+        if timer:
+            widget.after_cancel(timer)
+            timer = None
+        if window:
+            window.destroy()
+            window = None
+
+    def schedule(event):
+        nonlocal timer
+        hide(event)
+        timer = widget.after(450, show)
+
+    widget.bind("<Enter>", schedule, add="+")
+    widget.bind("<ButtonRelease-1>", schedule, add="+")
+    for event in ("<Leave>", "<ButtonPress>", "<Destroy>"):
+        widget.bind(event, hide, add="+")
+
+
+def flat_button(parent, command, **options):
+    return tk.Button(parent, command=command, relief="flat", overrelief="flat", bd=0,
+                     highlightthickness=0, cursor="hand2", font=UI_FONT, **options)
+
+
 class InterpreterApp(ctk.CTk):
-    # initalize main window and settings
     def __init__(self):
+        self.preferences_path = preferences_path()
+        self.mode = load_theme(self.preferences_path)
+        self.palette = PALETTES[self.mode]
+        ctk.set_appearance_mode(self.mode)
         super().__init__()
-        
-        # set window title bar text
         self.title("LOLTERPRETER - CMSC 124")
-        
-        # set initial window dimensions
         self.geometry("1200x700")
-        
-        # set dark theme for window appearance
-        ctk.set_appearance_mode("dark")
-        
-        # set theme color palette for widgets
-        ctk.set_default_color_theme("blue")
+        self.tabs = []
+        self.active_tab_id = None
+        self.next_tab_id = self.untitled_counter = 1
+        self.icons = {}
+        self.run = self.run_job = None
+        self.run_eof = False
+        self.style = ttk.Style(self)
+        self.style.theme_use("clam")
 
-        # initialize tab manager state and counters
-        self.tabs: list[dict] = []
-        self.active_tab_id: int = 1
-        self.next_tab_id: int = 1
-        self.untitled_counter: int = 1
-
-        # configure equal uniform width columns for editor, tokens, symbol table
-        self.grid_columnconfigure(0, weight=1, uniform="main_cols")
-        self.grid_columnconfigure(1, weight=1, uniform="main_cols")
-        self.grid_columnconfigure(2, weight=1, uniform="main_cols")
-        
-        # configure rows for top panels, execute button, console
-        self.grid_rowconfigure(0, weight=3)
-        self.grid_rowconfigure(1, weight=0)
-        self.grid_rowconfigure(2, weight=2)
-
-        # functions
-        self.setup_table_style() # configure dark styling for ttk tables
-        self.create_editor_panel() # build top left panel for code editing
-        self.create_tables_panel() # build middle and right panels for tables
-        self.create_bottom_panel() # build bottom execute button and console panel
-
-        # create initial blank editor tab
+        self.workspace = tk.Frame(self)
+        self.workspace.pack(fill="both", expand=True)
+        self.create_toolbar(self.workspace)
+        self.split = tk.PanedWindow(self.workspace, orient="horizontal", bd=0,
+                                    sashwidth=5, sashrelief="flat", opaqueresize=True)
+        self.split.pack(side="left", fill="both", expand=True)
+        self.editor_frame = tk.Frame(self.split)
+        self.results_frame = tk.Frame(self.split)
+        self.split.add(self.editor_frame, width=690, minsize=220, stretch="always")
+        self.split.add(self.results_frame, width=460, stretch="always")
+        self.create_editor_panel()
+        self.create_results_panel()
         self.create_new_tab()
+        self.apply_palette()
+        self.update_idletasks()
+        min_results = self.result_header.winfo_reqwidth() + 4
+        self.split.paneconfigure(self.results_frame, minsize=min_results)
+        self.minsize(220 + min_results + self.toolbar_frame.winfo_reqwidth() + 10, 310)
 
-    # fucntion to configure treeview dark theme colors
-    def setup_table_style(self):
-        style = ttk.Style()  # access ttk styling engine
-        
-        # set clam theme for consistent custom styling across platforms
-        style.theme_use("clam")
-        
-        # configure main table background and text colors
-        style.configure("Treeview", background="#2b2b2b", foreground="#ffffff", fieldbackground="#2b2b2b", rowheight=24, borderwidth=0)
-        
-        # configure header row background and text colors
-        style.configure("Treeview.Heading", background="#1f1f1f", foreground="#ffffff", relief="flat")
-        
-        # map selection color for highlighted table rows
-        style.map("Treeview", background=[("selected", "#1f6aa5")])
+        for shortcut, action in (("<Control-n>", self.new_file), ("<Control-o>", self.open_file),
+                                 ("<Control-s>", self.save_file), ("<Control-Shift-S>", self.save_as_file)):
+            self.bind(shortcut, action)
 
-    # fucntion to build left editor panel widgets
-    def create_editor_panel(self):
-        self.editor_frame = ctk.CTkFrame(self)  # container for editor column
-        self.editor_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        self.editor_frame.grid_columnconfigure(0, weight=1)
-        self.editor_frame.grid_rowconfigure(3, weight=1)
+    def icon(self, glyph, color):
+        key = (glyph, color)
+        if key not in self.icons:
+            self.icons[key] = MaterialIcon(glyph, size=18, color=color)
+        return self.icons[key].image
 
-        # container frame for file action toolbar buttons
-        self.toolbar_frame = ctk.CTkFrame(self.editor_frame, fg_color="transparent")
-        self.toolbar_frame.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-        self.toolbar_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-
-        # toolbar buttons for new, open, save, and save as
-        self.new_btn = ctk.CTkButton(self.toolbar_frame, text="New", width=60, command=self.new_file)
-        self.new_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
-
-        self.open_btn = ctk.CTkButton(self.toolbar_frame, text="Open", width=60, command=self.open_file)
-        self.open_btn.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
-
-        self.save_btn = ctk.CTkButton(self.toolbar_frame, text="Save", width=60, command=self.save_file)
-        self.save_btn.grid(row=0, column=2, padx=2, pady=2, sticky="ew")
-
-        self.save_as_btn = ctk.CTkButton(self.toolbar_frame, text="Save As", width=70, command=self.save_as_file)
-        self.save_as_btn.grid(row=0, column=3, padx=2, pady=2, sticky="ew")
-
-        # horizontal container for vscode style document tabs
-        self.tabs_bar = ctk.CTkFrame(self.editor_frame, height=42, fg_color="#1e1e1e")
-        self.tabs_bar.grid(row=1, column=0, sticky="ew", padx=2, pady=2)
-        self.tabs_bar.grid_columnconfigure(0, weight=1)
-
-        # scrollable container for open document tabs
-        self.tabs_scrollable = ctk.CTkScrollableFrame(
-            self.tabs_bar,
-            orientation="horizontal",
-            height=34,
-            fg_color="transparent",
+    def create_toolbar(self, parent):
+        self.toolbar_frame = tk.Frame(parent)
+        self.toolbar_frame.pack(side="left", fill="y", padx=(0, 1))
+        self.file_buttons = {}
+        actions = (
+            ("New", "Ctrl+N", self.new_file),
+            ("Open", "Ctrl+O", self.open_file),
+            ("Save", "Ctrl+S", self.save_file),
+            ("Save As", "Ctrl+Shift+S", self.save_as_file),
         )
-        self.tabs_scrollable.grid(row=0, column=0, sticky="ew", padx=(2, 0), pady=1)
+        for name, shortcut, action in actions:
+            button = flat_button(self.toolbar_frame, action, image=self.icon(FILE_GLYPHS[name], self.palette.muted),
+                                 width=38, height=34, padx=0, pady=0)
+            button.pack()
+            tooltip(button, f"{name} ({shortcut})")
+            self.file_buttons[name] = button
+        self.theme_button_border = tk.Frame(self.toolbar_frame)
+        self.theme_button_border.pack()
+        glyph = "white-balance-sunny" if self.mode == "dark" else "weather-night"
+        self.theme_button = flat_button(self.theme_button_border, self.toggle_theme,
+                                        image=self.icon(glyph, self.palette.muted),
+                                        width=34, height=30, padx=0, pady=0, takefocus=True)
+        self.theme_button.pack(padx=2, pady=2)
+        self.theme_hint = tk.StringVar(self)
+        tooltip(self.theme_button, self.theme_hint)
+        self.theme_button.bind("<Return>", self.toggle_theme)
+        self.theme_button.bind("<space>", self.toggle_theme)
+        self.theme_button.bind("<FocusIn>", lambda _event: self.style_theme_focus(True))
+        self.theme_button.bind("<FocusOut>", lambda _event: self.style_theme_focus(False))
 
-        # bind mousewheel and trackpad gestures across tabs bar for horizontal scrolling
-        self.tabs_bar.bind("<MouseWheel>", self.on_tabs_mousewheel)
-        self.tabs_scrollable.bind("<MouseWheel>", self.on_tabs_mousewheel)
-        self.tabs_scrollable._parent_canvas.bind("<MouseWheel>", self.on_tabs_mousewheel)
-        self.tabs_bar.bind("<Shift-MouseWheel>", self.on_tabs_mousewheel)
-        self.tabs_scrollable.bind("<Shift-MouseWheel>", self.on_tabs_mousewheel)
-        self.tabs_scrollable._parent_canvas.bind("<Shift-MouseWheel>", self.on_tabs_mousewheel)
+    def style_theme_focus(self, focused):
+        self.theme_button_border.configure(bg=self.palette.focus if focused else self.palette.chrome)
 
-        # add new tab plus button pinned to right
-        self.add_tab_btn = ctk.CTkButton(
-            self.tabs_bar,
-            text="+",
-            width=26,
-            height=26,
-            font=("Arial", 14, "bold"),
-            command=self.new_file,
-        )
-        self.add_tab_btn.grid(row=0, column=1, padx=4, pady=2)
-
-        # label displaying current active file path
-        self.file_label = ctk.CTkLabel(self.editor_frame, text="Untitled-1.lol", font=("Arial", 11), text_color="#9e9e9e")  # file status label
-        self.file_label.grid(row=2, column=0, sticky="w", padx=5, pady=1)
-
-        # multi line text editor with native undo redo enabled
-        self.editor = ctk.CTkTextbox(self.editor_frame, font=("Courier", 13), undo=True)  # code editor area
-        self.editor.grid(row=3, column=0, sticky="nsew", padx=5, pady=5)
-
-        # empty state placeholder frame when no document is open
-        self.empty_state_frame = ctk.CTkFrame(self.editor_frame, fg_color="transparent")
-
-        # center container for empty state prompt elements
-        self.empty_center = ctk.CTkFrame(self.empty_state_frame, fg_color="transparent")
-        self.empty_center.pack(expand=True)
-
-        # file icon for visual empty state prompt
-        self.empty_icon = ctk.CTkLabel(self.empty_center, text="📄", font=("Arial", 38), text_color="#6e6e6e")
-        self.empty_icon.pack(pady=(0, 6))
-
-        # primary prompt header
-        self.empty_title = ctk.CTkLabel(self.empty_center, text="No File Open", font=("Arial", 16, "bold"), text_color="#d4d4d4")
-        self.empty_title.pack(pady=(0, 4))
-
-        # helper description with instructions
-        self.empty_desc = ctk.CTkLabel(
-            self.empty_center,
-            text="click new file to create a file or open file to load code",
-            font=("Arial", 11),
-            text_color="#888888",
-            wraplength=260,
-        )
-        self.empty_desc.pack(pady=(0, 16))
-
-        # action button to create fresh document
-        self.empty_new_btn = ctk.CTkButton(self.empty_center, text="New File (Ctrl+N)", width=170, height=32, command=self.new_file)
-        self.empty_new_btn.pack(pady=4)
-
-        # action button to open existing file from disk
-        self.empty_open_btn = ctk.CTkButton(
-            self.empty_center,
-            text="Open File (Ctrl+O)",
-            width=170,
-            height=32,
-            fg_color="#3a3a3a",
-            hover_color="#4a4a4a",
-            command=self.open_file,
-        )
-        self.empty_open_btn.pack(pady=4)
-
-        # bind tab and indentation keys
-        self.editor.bind("<Tab>", self.insert_tab_spaces)
-        self.editor.bind("<Shift-Tab>", self.unindent_tab_spaces)
-
-        # bind undo and redo keyboard shortcuts
-        self.editor.bind("<Control-z>", self.safe_undo)
-        self.editor.bind("<Control-y>", self.safe_redo)
-        self.editor.bind("<Control-Z>", self.safe_redo)
-
-        # bind text modification listener to track unsaved changes
-        self.editor.bind("<KeyRelease>", self.on_text_modified)
-
-        # bind keyboard shortcuts for file operations
-        self.bind("<Control-n>", self.new_file)
-        self.bind("<Control-o>", self.open_file)
-        self.bind("<Control-s>", self.save_file)
-        self.bind("<Control-S>", self.save_as_file)
-
-    def insert_tab_spaces(self, event=None):
-        # insert four spaces for consistent indentation
-        self.editor.insert("insert", "    ")
-        self.on_text_modified()
+    def toggle_theme(self, _event=None):
+        self.mode = "light" if self.mode == "dark" else "dark"
+        self.palette = PALETTES[self.mode]
+        ctk.set_appearance_mode(self.mode)
+        self.apply_palette()
+        save_theme(self.preferences_path, self.mode)
         return "break"
 
-    def unindent_tab_spaces(self, event=None):
-        # remove up to four leading spaces on current line
-        cursor_pos = self.editor.index("insert")
-        line_num = cursor_pos.split(".")[0]
-        line_start = f"{line_num}.0"
-        line_text = self.editor.get(line_start, f"{line_num}.end")
-        spaces_to_remove = len(line_text) - len(line_text.lstrip(" "))
-        remove_count = min(spaces_to_remove, 4)
-        if remove_count > 0:
-            self.editor.delete(line_start, f"{line_num}.{remove_count}")
-        self.on_text_modified()
-        return "break"
+    def style_button(self, button, *, bg=None, fg=None):
+        palette = self.palette
+        background = bg or palette.chrome
+        foreground = fg or palette.ink
+        button.configure(bg=background, fg=foreground, activebackground=palette.hover,
+                         activeforeground=foreground, highlightbackground=background,
+                         highlightcolor=palette.focus)
 
-    def safe_undo(self, event=None):
-        # handle undo action safely without crashing on empty stack
-        try:
-            self.editor._textbox.edit_undo()
-            self.on_text_modified()
-        except Exception:
-            pass
-        return "break"
+    def apply_palette(self):
+        palette = self.palette
+        self.configure(fg_color=palette.surface)
+        for widget in (self.workspace, self.split):
+            widget.configure(bg=palette.edge)
+        for widget in (self.toolbar_frame, self.editor_header, self.result_header):
+            widget.configure(bg=palette.chrome)
+        for widget in (self.editor_frame, self.results_frame, *self.views.values()):
+            widget.configure(bg=palette.surface)
+        self.empty_label.configure(bg=palette.surface, fg=palette.muted)
+        self.console.configure(**palette.text_options())
+        self.input_hint.configure(bg=palette.chrome, fg=palette.muted)
+        self.file_tabs.apply_palette(palette)
 
-    def safe_redo(self, event=None):
-        # handle redo action safely without crashing on empty stack
-        try:
-            self.editor._textbox.edit_redo()
-            self.on_text_modified()
-        except Exception:
-            pass
-        return "break"
-
-    # --- Tab Management ---
-
-    def get_active_tab(self) -> dict | None:
-        # retrieve current active tab dictionary
+        for name, button in self.file_buttons.items():
+            self.style_button(button)
+            button.configure(image=self.icon(FILE_GLYPHS[name], palette.muted))
+        self.style_button(self.theme_button)
+        self.style_theme_focus(self.focus_get() == self.theme_button)
+        dark = self.mode == "dark"
+        glyph = "white-balance-sunny" if dark else "weather-night"
+        self.theme_button.configure(image=self.icon(glyph, palette.muted))
+        self.theme_hint.set("Switch to light mode" if dark else "Switch to dark mode")
+        self.style_button(self.execute_button)
+        self.refresh_execution_button()
+        self.apply_result_tabs_palette()
+        self.apply_document_tabs_palette()
         for tab in self.tabs:
-            if tab["id"] == self.active_tab_id:
-                return tab
-        return None
+            tab["view"].apply_palette(palette)
+        self.configure_ttk_styles()
+        for table in (self.tokens_table, self.symbol_table):
+            table.apply_palette(palette)
 
-    def format_tab_name(self, name: str, max_chars: int = 16) -> str:
-        # truncate long filenames with ellipsis to preserve tab bar width
-        if len(name) <= max_chars:
-            return name
-        base, ext = os.path.splitext(name)
-        if ext:
-            ext_clean = ext.lstrip(".")
-            base_limit = max(4, max_chars - len(ext_clean) - 4)
-            return f"{base[:base_limit]}...{ext_clean}"
-        return f"{name[:max_chars - 3]}..."
+    def create_editor_panel(self):
+        self.editor_frame.columnconfigure(0, weight=1)
+        self.editor_frame.rowconfigure(1, weight=1)
+        self.editor_header = tk.Frame(self.editor_frame)
+        self.editor_header.grid(row=0, column=0, sticky="ew")
+        self.editor_header.columnconfigure(0, weight=1)
+        self.file_tabs = FileTabStrip(self.editor_header)
+        self.file_tabs.grid(row=0, column=0, sticky="ew")
+        self.execute_button = flat_button(self.editor_header, self.execute_code,
+                                          image=self.icon("play", self.palette.play), width=34,
+                                          height=34, padx=0, pady=0)
+        self.execute_button.grid(row=0, column=1, sticky="ns")
+        self.execution_hint = tk.StringVar(self, "Execute active file")
+        tooltip(self.execute_button, self.execution_hint)
+        self.empty_label = tk.Label(self.editor_frame, text="No file open", font=UI_FONT)
 
-    def on_tabs_mousewheel(self, event):
-        # scroll horizontal tabs using mousewheel or two finger trackpad gesture
-        if event.delta:
-            scroll_units = int(-1 * (event.delta / 40))
-            self.tabs_scrollable._parent_canvas.xview_scroll(scroll_units, "units")
-            return "break"
-
-    def update_editor_visibility(self):
-        # toggle between empty state placeholder and active editor tabs view
-        if not self.tabs:
-            # hide tabs bar add button file label and text editor
-            self.tabs_bar.grid_remove()
-            self.file_label.grid_remove()
-            self.editor.grid_remove()
-            # show centered empty state prompt
-            self.empty_state_frame.grid(row=1, column=0, rowspan=3, sticky="nsew", padx=10, pady=10)
-            # disable save buttons when no document is open
-            self.save_btn.configure(state="disabled")
-            self.save_as_btn.configure(state="disabled")
+    def refresh_execution_button(self):
+        if self.run is None:
+            self.execute_button.configure(image=self.icon("play", self.palette.play))
+            self.execution_hint.set("Execute active file")
         else:
-            # hide empty state prompt
-            self.empty_state_frame.grid_remove()
-            # show tabs bar with add button file label and text editor
-            self.tabs_bar.grid(row=1, column=0, sticky="ew", padx=2, pady=2)
-            self.file_label.grid(row=2, column=0, sticky="w", padx=5, pady=1)
-            self.editor.grid(row=3, column=0, sticky="nsew", padx=5, pady=5)
-            # enable save buttons
-            self.save_btn.configure(state="normal")
-            self.save_as_btn.configure(state="normal")
+            self.execute_button.configure(image=self.icon("stop", self.palette.stop))
+            self.execution_hint.set("Terminate running program (Ctrl+C in Output)")
 
-    def create_new_tab(self, name: str | None = None, path: str | None = None, content: str = ""):
-        # enable editor if previously disabled
-        self.editor.configure(state="normal")
+    def create_results_panel(self):
+        self.results_frame.columnconfigure(0, weight=1)
+        self.results_frame.rowconfigure(1, weight=1)
+        self.result_header = tk.Frame(self.results_frame)
+        self.result_header.grid(row=0, column=0, sticky="ew")
+        self.result_header.rowconfigure(0, minsize=32)
+        self.result_header.columnconfigure(3, weight=1)
+        self.views = {}
+        self.result_tabs = {}
+        for column, name in enumerate(("Output", "Lexemes", "Symbol Table")):
+            button = flat_button(self.result_header, lambda view=name: self.show_result(view),
+                                 text=name.upper(), padx=8, pady=4)
+            button.grid(row=0, column=column, sticky="ns")
+            underline = tk.Frame(self.result_header, height=2)
+            underline.grid(row=1, column=column, sticky="ew")
+            self.result_tabs[name] = (button, underline)
+            page = tk.Frame(self.results_frame)
+            page.grid(row=1, column=0, sticky="nsew")
+            page.rowconfigure(0, weight=1)
+            page.columnconfigure(0, weight=1)
+            self.views[name] = page
+        output = self.views["Output"]
+        self.console = OutputConsole(output, font=MONO, bd=0, highlightthickness=0,
+                                     width=1, height=1, padx=12, pady=10, wrap="word")
+        self.console.grid(row=0, column=0, sticky="nsew")
+        self.console.bind("<Control-c>", self.stop_run)
+        self.console.bind("<Control-a>", self.select_console_text)
+        self.console.bind("<Return>", self.submit_console_input)
+        self.console.bind("<KP_Enter>", self.submit_console_input)
+        self.add_scrollbar(output, self.console)
+        self.input_hint = tk.Label(output, text="Enter to submit", font=UI_FONT,
+                                   anchor="w", padx=12, pady=4)
+        self.input_hint.grid(row=1, column=0, columnspan=2, sticky="ew")
+        self.input_hint.grid_remove()
+        self.tokens_table = self.create_table("Lexemes", (("Lexeme", 130), ("Classification", 130)))
+        self.symbol_table = self.create_table("Symbol Table",
+                                              (("Identifier", 130), ("Type", 85), ("Value", 130)))
+        self.show_result("Output")
 
-        tab_id = self.next_tab_id
-        self.next_tab_id += 1
+    def configure_ttk_styles(self):
+        palette, style = self.palette, self.style
+        style.configure("Treeview", background=palette.surface, fieldbackground=palette.surface,
+                        foreground=palette.ink, font=MONO, rowheight=25, borderwidth=0,
+                        bordercolor=palette.edge, lightcolor=palette.edge, darkcolor=palette.edge)
+        style.map("Treeview", background=[("selected", palette.table_selection)],
+                  foreground=[("selected", palette.ink)])
+        style.configure("Treeview.Heading", background=palette.chrome, foreground=palette.ink,
+                        relief="flat", padding=(6, 4), font=UI_FONT, bordercolor=palette.edge,
+                        lightcolor=palette.chrome, darkcolor=palette.chrome)
+        style.map("Treeview.Heading", background=[("active", palette.hover)])
 
+        style.configure("TScrollbar", background=palette.scroll_thumb, troughcolor=palette.chrome,
+                        bordercolor=palette.chrome, lightcolor=palette.scroll_thumb,
+                        darkcolor=palette.scroll_thumb, arrowcolor=palette.surface)
+        style.map("TScrollbar", background=[("active", palette.muted)])
+        style.configure("Hint.TLabel", background=palette.tooltip_bg, foreground=palette.tooltip_fg,
+                        font=UI_FONT, padding=(8, 3))
+
+    @staticmethod
+    def add_scrollbar(page, widget):
+        bar = ttk.Scrollbar(page, orient="vertical", command=widget.yview)
+        bar.grid(row=0, column=1, sticky="ns")
+        widget.configure(yscrollcommand=lambda a, b: set_scrollbar(bar, a, b))
+
+    def create_table(self, view, columns):
+        table = ResultsTable(self.views[view], columns)
+        table.grid(row=0, column=0, sticky="nsew")
+        return table
+
+    def show_result(self, name):
+        self.active_result = name
+        self.views[name].tkraise()
+        self.apply_result_tabs_palette()
+
+    def apply_result_tabs_palette(self):
+        palette = self.palette
+        for view, (button, underline) in self.result_tabs.items():
+            active = view == self.active_result
+            self.style_button(button, fg=palette.ink if active else palette.muted)
+            underline.configure(bg=palette.play if active else palette.chrome)
+
+    def get_active_tab(self):
+        return next((tab for tab in self.tabs if tab["id"] == self.active_tab_id), None)
+
+    def create_new_tab(self, name=None, path=None, content=""):
         if name is None:
             name = f"Untitled-{self.untitled_counter}.lol"
             self.untitled_counter += 1
+        tab = dict(id=self.next_tab_id, name=name, path=path, saved_content=content, is_dirty=False)
+        self.next_tab_id += 1
+        tab["view"] = SourceEditor(self.editor_frame, content, lambda: self.on_text_modified(tab),
+                                   self.palette)
+        self.tabs.append(tab)
+        self.switch_tab(tab["id"])
 
-        tab_data = {
-            "id": tab_id,
-            "name": name,
-            "path": path,
-            "saved_content": content,
-            "current_content": content,
-            "is_dirty": False,
-        }
-        self.tabs.append(tab_data)
-        self.switch_tab(tab_id)
-
-    def switch_tab(self, tab_id: int):
-        # enable editor
-        self.editor.configure(state="normal")
-
-        # save current editor buffer to outgoing active tab
-        current_active = self.get_active_tab()
-        if current_active is not None and self.editor.cget("state") == "normal":
-            current_active["current_content"] = self.editor.get("1.0", "end-1c")
-
-        # set new active tab and load content into editor
+    def switch_tab(self, tab_id):
+        current = self.get_active_tab()
+        if current:
+            current["view"].grid_remove()
         self.active_tab_id = tab_id
-        new_active = self.get_active_tab()
-        if new_active is not None:
-            self.editor.delete("1.0", "end")
-            self.editor.insert("1.0", new_active["current_content"])
-            display_path = new_active["path"] if new_active["path"] else new_active["name"]
-            self.file_label.configure(text=display_path)
+        tab = self.get_active_tab()
+        self.empty_label.grid_remove()
+        tab["view"].grid(row=1, column=0, sticky="nsew")
+        self.editor = tab["view"].text
+        self.editor.focus_set()
+        self.render_tabs(reveal_active=True)
 
-        self.render_tabs()
-
-    def close_tab(self, tab_id: int, event=None):
-        # close specified tab and switch to adjacent tab
-        tab_to_close = None
-        for tab in self.tabs:
-            if tab["id"] == tab_id:
-                tab_to_close = tab
-                break
-
-        if tab_to_close is None:
-            return
-
-        # check if active tab buffer has newer text
-        if tab_to_close["id"] == self.active_tab_id and self.editor.cget("state") == "normal":
-            current_text = self.editor.get("1.0", "end-1c")
-            tab_to_close["current_content"] = current_text
-            tab_to_close["is_dirty"] = (current_text != tab_to_close["saved_content"])
-
-        # prompt user for confirmation if document has unsaved modifications
-        if tab_to_close["is_dirty"]:
-            self.switch_tab(tab_to_close["id"])
-            choice = messagebox.askyesnocancel(
-                title="Unsaved Changes",
-                message=f"Do you want to save changes to '{tab_to_close['name']}' before closing?",
-            )
-            if choice is None:
-                # cancel clicked, abort tab closing
+    def close_tab(self, tab_id):
+        tab = next(tab for tab in self.tabs if tab["id"] == tab_id)
+        self.on_text_modified(tab)
+        if tab["is_dirty"]:
+            self.switch_tab(tab_id)
+            choice = messagebox.askyesnocancel("Unsaved Changes",
+                f"Do you want to save changes to '{tab['name']}' before closing?", parent=self)
+            if choice is None or (choice and not self.save_file()):
                 return
-            if choice is True:
-                # save clicked, write changes before closing
-                saved = self.save_file()
-                if not saved or tab_to_close["is_dirty"]:
-                    # save was cancelled, abort tab closing
-                    return
-
-        self.tabs.remove(tab_to_close)
-
-        # if no tabs remain open, clear editor and reset counter
-        if not self.tabs:
-            self.active_tab_id = 0
-            self.untitled_counter = 1
-            self.editor.delete("1.0", "end")
-            self.render_tabs()
-            return
-
-        # if closed tab was active, switch to last open tab
-        if self.active_tab_id == tab_id:
+        self.tabs.remove(tab)
+        tab["view"].destroy()
+        if self.tabs and self.active_tab_id == tab_id:
             self.switch_tab(self.tabs[-1]["id"])
         else:
+            if not self.tabs:
+                self.active_tab_id = self.editor = None
+                self.untitled_counter = 1
+                self.empty_label.grid(row=1, column=0)
             self.render_tabs()
 
-    def render_tabs(self):
-        # toggle visibility of empty state versus active tabs
-        self.update_editor_visibility()
+    def on_text_modified(self, tab):
+        content = tab["view"].text.get("1.0", "end-1c")
+        dirty = content != tab["saved_content"]
+        if dirty != tab["is_dirty"]:
+            tab["is_dirty"] = dirty
+            self.render_tabs()
 
-        # clear and rebuild tab pill buttons in scrollable tab bar
-        for widget in self.tabs_scrollable.winfo_children():
+    def render_tabs(self, reveal_active=False):
+        for widget in self.file_tabs.items.winfo_children():
             widget.destroy()
-
-        if not self.tabs:
-            return
-
+        self.tab_widgets = []
+        for name in ("Save", "Save As"):
+            self.file_buttons[name].configure(state="normal" if self.tabs else "disabled")
         for tab in self.tabs:
-            is_active = (tab["id"] == self.active_tab_id)
-            pill_color = "#1f6aa5" if is_active else "#2b2b2b"
+            tab_id = tab["id"]
+            active = tab_id == self.active_tab_id
+            item = tk.Frame(self.file_tabs.items)
+            item.pack(side="left", fill="y", padx=(0, 1))
+            select = lambda tid=tab_id: self.switch_tab(tid)
+            dot = None
+            if tab["is_dirty"]:
+                dot = tk.Canvas(item, width=12, height=12, highlightthickness=0)
+                dot.create_oval(3, 3, 10, 10, outline="")
+                dot.pack(side="left", padx=(5, 0))
+                dot.bind("<Button-1>", lambda e, action=select: action())
+            name = tab["name"]
+            label = flat_button(item, select, text=name if len(name) <= 24 else name[:20] + "…",
+                                padx=7, pady=5)
+            label.pack(side="left")
+            tooltip(label, tab["path"] or name)
+            close = flat_button(item, lambda tid=tab_id: self.close_tab(tid),
+                                text="×", padx=4, pady=2)
+            close.pack(side="left", padx=(0, 3))
+            self.tab_widgets.append((active, item, label, close, dot))
+            for widget in (item, *item.winfo_children()):
+                self.file_tabs.bind_scrolling(widget)
+            if active and reveal_active:
+                item.bind("<Map>", self.file_tabs.reveal)
+        self.apply_document_tabs_palette()
 
-            pill = ctk.CTkFrame(self.tabs_scrollable, fg_color=pill_color, corner_radius=6)
-            pill.pack(side="left", padx=2, pady=2)
-
-            # label displaying truncated filename with unsaved circle marker if dirty
-            marker = "● " if tab["is_dirty"] else ""
-            display_name = self.format_tab_name(tab["name"])
-            label_text = f"{marker}{display_name}"
-            tab_label = ctk.CTkLabel(pill, text=label_text, font=("Arial", 11, "bold" if is_active else "normal"))
-            tab_label.pack(side="left", padx=(6, 2))
-            tab_label.bind("<Button-1>", lambda e, tid=tab["id"]: self.switch_tab(tid))
-            pill.bind("<Button-1>", lambda e, tid=tab["id"]: self.switch_tab(tid))
-
-            # close tab button
-            close_btn = ctk.CTkButton(
-                pill,
-                text="✕",
-                width=16,
-                height=16,
-                font=("Arial", 9),
-                fg_color="transparent",
-                hover_color="#c42b1c",
-                command=lambda tid=tab["id"]: self.close_tab(tid),
-            )
-            close_btn.pack(side="left", padx=(0, 4))
-
-            # bind mousewheel to tab pill and elements for smooth trackpad scrolling
-            pill.bind("<MouseWheel>", self.on_tabs_mousewheel)
-            tab_label.bind("<MouseWheel>", self.on_tabs_mousewheel)
-            close_btn.bind("<MouseWheel>", self.on_tabs_mousewheel)
-
-    def on_text_modified(self, event=None):
-        # detect text modifications and update unsaved circle marker
-        active_tab = self.get_active_tab()
-        if active_tab is None:
-            return
-
-        current_text = self.editor.get("1.0", "end-1c")
-        active_tab["current_content"] = current_text
-        was_dirty = active_tab["is_dirty"]
-        is_dirty = (current_text != active_tab["saved_content"])
-
-        if is_dirty != was_dirty:
-            active_tab["is_dirty"] = is_dirty
-            self.render_tabs()
+    def apply_document_tabs_palette(self):
+        palette = self.palette
+        for active, item, label, close, dot in self.tab_widgets:
+            background = palette.surface if active else palette.chrome
+            item.configure(bg=background)
+            self.style_button(label, bg=background)
+            self.style_button(close, bg=background, fg=palette.muted)
+            if dot is not None:
+                dot.configure(bg=background)
+                dot.itemconfigure("all", fill=palette.dirty)
 
     # --- File Operations ---
 
@@ -485,9 +446,7 @@ class InterpreterApp(ctk.CTk):
             file.write(content)
 
         active_tab["saved_content"] = content
-        active_tab["current_content"] = content
         active_tab["is_dirty"] = False
-        self.file_label.configure(text=active_tab["path"])
         self.render_tabs()
         return True
 
@@ -517,163 +476,147 @@ class InterpreterApp(ctk.CTk):
         active_tab["path"] = file_path
         active_tab["name"] = file_name
         active_tab["saved_content"] = content
-        active_tab["current_content"] = content
         active_tab["is_dirty"] = False
-        self.file_label.configure(text=file_path)
         self.render_tabs()
         return True
 
-    # fucntion to build middle tokens table and right symbol table
-    def create_tables_panel(self):
-        # middle column frame for tokens list
-        self.tokens_frame = ctk.CTkFrame(self)  # container for tokens column
-        self.tokens_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
-        self.tokens_frame.grid_columnconfigure(0, weight=1)
-        self.tokens_frame.grid_rowconfigure(1, weight=1)
-
-        # header label for tokens table
-        tokens_label = ctk.CTkLabel(self.tokens_frame, text="Lexemes", font=("Arial", 14, "bold"))  # lexemes header
-        tokens_label.grid(row=0, column=0, sticky="w", padx=8, pady=4)
-
-        # table to display lexemes and their classifications
-        self.tokens_table = ttk.Treeview(self.tokens_frame, columns=("lexeme", "classification"), show="headings")  # tokens table
-        self.tokens_table.heading("lexeme", text="Lexeme")
-        self.tokens_table.heading("classification", text="Classification")
-        self.tokens_table.column("lexeme", width=120, anchor="w")
-        self.tokens_table.column("classification", width=160, anchor="w")
-        self.tokens_table.grid(row=1, column=0, sticky="nsew", padx=(5, 0), pady=5)
-
-        # vertical scrollbar for tokens table
-        tokens_scroll = ttk.Scrollbar(self.tokens_frame, orient="vertical", command=self.tokens_table.yview)  # tokens scrollbar
-        tokens_scroll.grid(row=1, column=1, sticky="ns", pady=5)
-        self.tokens_table.configure(yscrollcommand=tokens_scroll.set)
-
-        # right column frame for symbol table
-        self.symbol_frame = ctk.CTkFrame(self)  # container for symbol column
-        self.symbol_frame.grid(row=0, column=2, sticky="nsew", padx=5, pady=5)
-        self.symbol_frame.grid_columnconfigure(0, weight=1)
-        self.symbol_frame.grid_rowconfigure(1, weight=1)
-
-        # header label for symbol table
-        symbol_label = ctk.CTkLabel(self.symbol_frame, text="SYMBOL TABLE", font=("Arial", 14, "bold"))  # symbol header
-        symbol_label.grid(row=0, column=0, sticky="w", padx=8, pady=4)
-
-        # table to display variable identifiers, types, and runtime values in three dedicated columns
-        self.symbol_table = ttk.Treeview(self.symbol_frame, columns=("identifier", "type", "value"), show="headings")  # symbol table
-        self.symbol_table.heading("identifier", text="Identifier")
-        self.symbol_table.heading("type", text="Type")
-        self.symbol_table.heading("value", text="Value")
-        self.symbol_table.column("identifier", width=100, anchor="w")
-        self.symbol_table.column("type", width=80, anchor="center")
-        self.symbol_table.column("value", width=130, anchor="w")
-        self.symbol_table.grid(row=1, column=0, sticky="nsew", padx=(5, 0), pady=5)
-
-        # vertical scrollbar for symbol table
-        symbol_scroll = ttk.Scrollbar(self.symbol_frame, orient="vertical", command=self.symbol_table.yview)  # symbol scrollbar
-        symbol_scroll.grid(row=1, column=1, sticky="ns", pady=5)
-        self.symbol_table.configure(yscrollcommand=symbol_scroll.set)
-
-    # fucntion to build execute button and console output area
-    def create_bottom_panel(self):
-        # full width execute button spanning all columns
-        self.execute_button = ctk.CTkButton(self, text="EXECUTE", font=("Arial", 14, "bold"), command=self.execute_code)  # execute button
-        self.execute_button.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
-
-        # multi line console output area spanning all columns
-        self.console = ctk.CTkTextbox(self, font=("Courier", 12))  # console text area
-        self.console.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
-
-    # function to execute code from editor and update lexemes, symbol table, and console
     def execute_code(self):
-        # check if any file tab is open
-        if not self.tabs or self.get_active_tab() is None:
-            self.console.delete("1.0", "end")
-            self.console.insert("end", "no file open to execute\n")
+        if self.run is not None:
+            self.stop_run()
             return
 
-        code = self.editor.get("1.0", "end-1c")  # get current text from editor
+        self.show_result("Output")
+        self.console.clear_transcript()
+        for table in (self.tokens_table, self.symbol_table):
+            table.clear()
 
-        # clear existing rows from lexemes table
-        for item in self.tokens_table.get_children():
-            self.tokens_table.delete(item)
-
-        # clear existing rows from symbol table
-        for item in self.symbol_table.get_children():
-            self.symbol_table.delete(item)
-
-        # clear console display area
-        self.console.delete("1.0", "end")
-
-        # check if editor has content, stop if empty
-        if not code.strip():
-            self.console.insert("end", "no code to execute\n")
+        if self.get_active_tab() is None:
+            self.append_console("no file open to execute\n")
+            return
+        source = self.editor.get("1.0", "end-1c")
+        if not source.strip():
+            self.append_console("no code to execute\n")
             return
 
-        controller = InterpreterController(
-            on_tokens_updated=self.update_tokens_table,
-            on_symbols_updated=self.update_symbol_table,
-            on_stdout=self.append_console,
-            request_stdin=self.prompt_input,
-            on_error=self.report_error,
-        )
-        controller.execute(code)
+        try:
+            self.run = ProgramRun(source)
+        except OSError as error:
+            self.append_console(f"[Execution Error] {error}\n")
+            return
 
-    # populate lexemes table from token stream
-    def update_tokens_table(self, tokens):
-        for tok in tokens:
-            # skip structural tokens from table display
-            if tok.type not in (T.NEWLINE, T.EOF):
-                self.tokens_table.insert("", "end", values=(tok.value, tok.classification))
+        self.run_eof = False
+        self.refresh_execution_button()
+        self.run_job = self.after(15, self.poll_run)
 
-    # refresh symbol table with identifier, type, and value columns
-    def update_symbol_table(self, symbols):
-        for item in self.symbol_table.get_children():
-            self.symbol_table.delete(item)
-        for name, lol_val in symbols.items():
-            type_str = lol_val.type_name
-            if lol_val.type_name == "NOOB":
-                val_str = "NOOB"
-            elif lol_val.type_name == "TROOF":
-                val_str = "WIN" if lol_val.value else "FAIL"
-            elif lol_val.type_name == "YARN":
-                val_str = f'"{lol_val.value}"'
+    def stop_run(self, _event=None):
+        if self.run is None:
+            return None
+        if not self.run.cancelled.is_set():
+            self.run.stop()
+            self.end_console_input()
+        return "break"
+
+    def poll_run(self):
+        self.run_job = None
+        run = self.run
+        if run.cancelled.is_set() or self.run_eof:
+            exit_code = run.process.poll()
+            if exit_code is not None:
+                self.finish_run(exit_code)
+                return
+        else:
+            self.drain_run_events()
+        self.run_job = self.after(15, self.poll_run)
+
+    def drain_run_events(self):
+        output = []
+        deadline = monotonic() + 0.008
+        for _ in range(64):
+            try:
+                kind, value = self.run.events.get_nowait()
+            except Empty:
+                break
+            if kind == "output":
+                output.append(value)
+            elif kind == "input":
+                self.append_console("".join(output))
+                output.clear()
+                self.begin_console_input()
+            elif kind == "eof":
+                self.run_eof = True
+                break
+            elif kind == "clear_symbols":
+                self.symbol_table.clear()
             else:
-                val_str = str(lol_val.value)
-            self.symbol_table.insert("", "end", values=(name, type_str, val_str))
-        self.update_idletasks()
+                table = self.tokens_table if kind == "lexemes" else self.symbol_table
+                table.extend(value)
+            if monotonic() >= deadline:
+                break
+        self.append_console("".join(output))
 
-    # append interpreter output to console and refresh display immediately
+    def finish_run(self, exit_code):
+        self.end_console_input()
+        if self.run.cancelled.is_set():
+            newline = "" if self.console.index("end-1c").endswith(".0") else "\n"
+            self.append_console(f"{newline}Program terminated by user.\n")
+        elif exit_code:
+            self.append_console(f"\n[Execution Error] Interpreter exited with status {exit_code}.\n")
+        self.run = None
+        self.refresh_execution_button()
+
     def append_console(self, text):
-        self.console.insert("end", text)
-        self.console.see("end")
-        self.update_idletasks()
+        if not text:
+            return
+        follow_output = (self.console.yview()[1] == 1
+                         and self.console.compare("insert", "==", "end-1c")
+                         and not self.console.tag_ranges("sel"))
+        self.console.append_transcript(text)
+        if follow_output:
+            self.console.see("end")
 
-    # prompt user for GIMMEH input via modal dialog and echo it to console
-    def prompt_input(self):
-        dialog = ctk.CTkInputDialog(text="Enter input for GIMMEH:", title="Program Input")
-        user_input = dialog.get_input()
-        if user_input is None:
-            user_input = ""
-        self.append_console(f"{user_input}\n")
-        return user_input
+    def select_console_text(self, _event):
+        self.console.tag_add("sel", "1.0", "end-1c")
+        return "break"
 
-    # format and display lexical, syntax, semantic, or runtime errors in console
-    def report_error(self, err):
-        if isinstance(err, LexicalError):
-            phase = "Lexical Error"
-        elif isinstance(err, SyntaxError):
-            phase = "Syntax Error"
-        elif isinstance(err, SemanticError):
-            phase = "Semantic Error"
-        elif isinstance(err, LolRuntimeError):
-            phase = "Runtime Error"
-        else:
-            phase = "Error"
+    def begin_console_input(self):
+        self.show_result("Output")
+        self.input_hint.grid()
+        self.console.tag_remove("sel", "1.0", "end")
+        self.console.mark_set(INPUT_START, "end-1c")
+        self.console.mark_gravity(INPUT_START, "left")
+        self.console.mark_set("insert", INPUT_START)
+        self.console.focus_set()
+        self.console.see("insert")
 
-        if err.line > 0:
-            self.append_console(f"\n[{phase}] Line {err.line}: {err.message}\n")
-        else:
-            self.append_console(f"\n[{phase}] {err.message}\n")
+    def submit_console_input(self, _event):
+        if INPUT_START not in self.console.mark_names():
+            return None
+        if self.run_eof or self.run.process.poll() is not None:
+            self.end_console_input()
+            return None
+        value = self.console.get(INPUT_START, "end-1c")
+        self.end_console_input()
+        self.console.append_transcript("\n")
+        self.console.mark_set("insert", "end-1c")
+        self.console.see("insert")
+        self.run.replies.put(value)
+        return "break"
+
+    def end_console_input(self):
+        self.console.mark_unset(INPUT_START)
+        self.input_hint.grid_remove()
+
+    def destroy(self):
+        if self.run_job is not None:
+            self.after_cancel(self.run_job)
+        if self.run is not None:
+            self.run.stop()
+            try:
+                self.run.process.wait(timeout=0.5)
+            except TimeoutExpired:
+                pass
+        super().destroy()
+
 
 # entry point fucntion to start gui
 def main():
