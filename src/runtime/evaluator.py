@@ -86,13 +86,16 @@ class Evaluator:
         # reject unrecognized expression nodes
         raise LolRuntimeError(f"Unsupported expression: {type(expr).__name__}", getattr(expr, "line", 0))
 
-    def concat_yarn(self, operands: list[Any], env: Environment, line: int) -> str:
-        # convert each operand to yarn text without implicit noob casting
+    def concat_yarn(self, operands: list[Any], env: Environment, line: int, noob_as_text: bool = False) -> str:
+        #noob_as_text=True is used by VISIBLE so a null variable prints as NOOB instead of raising
         parts: list[str] = []
         for operand in operands:
             val = self.eval(operand, env)
-            yarn_val = to_yarn(val, explicit=False, line=line)
-            parts.append(yarn_val.value)
+            if noob_as_text and val.type_name == "NOOB":
+                log('EVAL', f'line {line}: VISIBLE operand is NOOB, printing NOOB')
+                parts.append("NOOB")
+                continue
+            parts.append(to_yarn(val, explicit=False, line=line).value)
         return "".join(parts)
 
     def _eval_binary(self, expr: BinaryOp, env: Environment) -> LolValue:

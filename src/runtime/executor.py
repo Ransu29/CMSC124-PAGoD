@@ -74,7 +74,8 @@ class Executor:
 
         # execute print statment with optional newline
         if isinstance(stmt, PrintStmt):
-            text = self.runtime.evaluator.concat_yarn(stmt.operands, env, stmt.line)
+            text = self.runtime.evaluator.concat_yarn(stmt.operands, env, stmt.line, noob_as_text=True)
+            log('EXEC', f'VISIBLE output: {text!r}', self._depth)
             if not stmt.suppress_newline:
                 text += "\n"
             self.runtime.output_fn(text)

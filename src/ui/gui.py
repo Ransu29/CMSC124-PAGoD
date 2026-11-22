@@ -632,7 +632,7 @@ class InterpreterApp(ctk.CTk):
         for name, lol_val in symbols.items():
             type_str = lol_val.type_name
             if lol_val.type_name == "NOOB":
-                val_str = "None"
+                val_str = "NOOB"
             elif lol_val.type_name == "TROOF":
                 val_str = "WIN" if lol_val.value else "FAIL"
             elif lol_val.type_name == "YARN":
