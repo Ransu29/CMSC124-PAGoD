@@ -10,6 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 import customtkinter as ctk
 from tkinter_icons import MaterialIcon
 
+from ui.console import INPUT_START, OutputConsole
 from ui.editor import MONO, SourceEditor, set_scrollbar
 from ui.runner import ProgramRun
 from ui.tables import ResultsTable
@@ -78,8 +79,7 @@ class InterpreterApp(ctk.CTk):
         self.active_tab_id = None
         self.next_tab_id = self.untitled_counter = 1
         self.icons = {}
-        self.run = self.run_job = self.input_dialog = None
-        self.input_label = None
+        self.run = self.run_job = None
         self.run_eof = False
         self.style = ttk.Style(self)
         self.style.theme_use("clam")
@@ -173,6 +173,7 @@ class InterpreterApp(ctk.CTk):
             widget.configure(bg=palette.surface)
         self.empty_label.configure(bg=palette.surface, fg=palette.muted)
         self.console.configure(**palette.text_options())
+        self.input_hint.configure(bg=palette.chrome, fg=palette.muted)
         self.file_tabs.apply_palette(palette)
 
         for name, button in self.file_buttons.items():
@@ -193,8 +194,6 @@ class InterpreterApp(ctk.CTk):
         self.configure_ttk_styles()
         for table in (self.tokens_table, self.symbol_table):
             table.apply_palette(palette)
-        if self.input_dialog is not None:
-            self.style_input_dialog()
 
     def create_editor_panel(self):
         self.editor_frame.columnconfigure(0, weight=1)
@@ -242,11 +241,18 @@ class InterpreterApp(ctk.CTk):
             page.columnconfigure(0, weight=1)
             self.views[name] = page
         output = self.views["Output"]
-        self.console = tk.Text(output, font=MONO, bd=0, highlightthickness=0,
-                               width=1, height=1, padx=12, pady=10, wrap="word")
+        self.console = OutputConsole(output, font=MONO, bd=0, highlightthickness=0,
+                                     width=1, height=1, padx=12, pady=10, wrap="word")
         self.console.grid(row=0, column=0, sticky="nsew")
         self.console.bind("<Control-c>", self.stop_run)
+        self.console.bind("<Control-a>", self.select_console_text)
+        self.console.bind("<Return>", self.submit_console_input)
+        self.console.bind("<KP_Enter>", self.submit_console_input)
         self.add_scrollbar(output, self.console)
+        self.input_hint = tk.Label(output, text="Enter to submit", font=UI_FONT,
+                                   anchor="w", padx=12, pady=4)
+        self.input_hint.grid(row=1, column=0, columnspan=2, sticky="ew")
+        self.input_hint.grid_remove()
         self.tokens_table = self.create_table("Lexemes", (("Lexeme", 130), ("Classification", 130)))
         self.symbol_table = self.create_table("Symbol Table",
                                               (("Identifier", 130), ("Type", 85), ("Value", 130)))
@@ -270,17 +276,6 @@ class InterpreterApp(ctk.CTk):
         style.map("TScrollbar", background=[("active", palette.muted)])
         style.configure("Hint.TLabel", background=palette.tooltip_bg, foreground=palette.tooltip_fg,
                         font=UI_FONT, padding=(8, 3))
-        style.configure("TEntry", fieldbackground=palette.surface, foreground=palette.ink,
-                        bordercolor=palette.edge, insertcolor=palette.ink,
-                        lightcolor=palette.surface, darkcolor=palette.surface,
-                        selectbackground=palette.selection, selectforeground=palette.ink)
-        style.map("TEntry", bordercolor=[("focus", palette.focus)],
-                  lightcolor=[("focus", palette.surface)], darkcolor=[("focus", palette.surface)])
-        style.configure("TButton", background=palette.chrome, foreground=palette.ink,
-                        bordercolor=palette.edge, lightcolor=palette.chrome, darkcolor=palette.chrome,
-                        focuscolor=palette.focus)
-        style.map("TButton", background=[("pressed", palette.selection), ("active", palette.hover)],
-                  bordercolor=[("focus", palette.focus)])
 
     @staticmethod
     def add_scrollbar(page, widget):
@@ -491,7 +486,7 @@ class InterpreterApp(ctk.CTk):
             return
 
         self.show_result("Output")
-        self.console.delete("1.0", "end")
+        self.console.clear_transcript()
         for table in (self.tokens_table, self.symbol_table):
             table.clear()
 
@@ -518,7 +513,7 @@ class InterpreterApp(ctk.CTk):
             return None
         if not self.run.cancelled.is_set():
             self.run.stop()
-            self.close_input_dialog()
+            self.end_console_input()
         return "break"
 
     def poll_run(self):
@@ -546,7 +541,7 @@ class InterpreterApp(ctk.CTk):
             elif kind == "input":
                 self.append_console("".join(output))
                 output.clear()
-                self.show_input_dialog()
+                self.begin_console_input()
             elif kind == "eof":
                 self.run_eof = True
                 break
@@ -560,59 +555,56 @@ class InterpreterApp(ctk.CTk):
         self.append_console("".join(output))
 
     def finish_run(self, exit_code):
+        self.end_console_input()
         if self.run.cancelled.is_set():
             newline = "" if self.console.index("end-1c").endswith(".0") else "\n"
             self.append_console(f"{newline}Program terminated by user.\n")
         elif exit_code:
             self.append_console(f"\n[Execution Error] Interpreter exited with status {exit_code}.\n")
-        self.close_input_dialog()
         self.run = None
         self.refresh_execution_button()
 
     def append_console(self, text):
-        if text:
-            self.console.insert("end", text)
+        if not text:
+            return
+        follow_output = (self.console.yview()[1] == 1
+                         and self.console.compare("insert", "==", "end-1c")
+                         and not self.console.tag_ranges("sel"))
+        self.console.append_transcript(text)
+        if follow_output:
             self.console.see("end")
 
-    def show_input_dialog(self):
-        run = self.run
-        dialog = tk.Toplevel(self)
-        self.input_dialog = dialog
-        dialog.title("Program Input")
-        dialog.transient(self)
-        dialog.resizable(False, False)
-        width = 300
-        x = self.winfo_rootx() + (self.winfo_width() - width) // 2
-        y = self.winfo_rooty() + 90
-        dialog.geometry(f"{width}x106+{x}+{y}")
+    def select_console_text(self, _event):
+        self.console.tag_add("sel", "1.0", "end-1c")
+        return "break"
 
-        def reply(value):
-            if self.run is run and self.input_dialog is dialog and not run.cancelled.is_set():
-                self.close_input_dialog()
-                self.append_console(f"{value}\n")
-                run.replies.put(value)
+    def begin_console_input(self):
+        self.show_result("Output")
+        self.input_hint.grid()
+        self.console.tag_remove("sel", "1.0", "end")
+        self.console.mark_set(INPUT_START, "end-1c")
+        self.console.mark_gravity(INPUT_START, "left")
+        self.console.mark_set("insert", INPUT_START)
+        self.console.focus_set()
+        self.console.see("insert")
 
-        self.input_label = tk.Label(dialog, text="Enter input for GIMMEH:", font=UI_FONT)
-        self.input_label.pack(anchor="w", padx=12, pady=(8, 3))
-        self.style_input_dialog()
-        entry = ttk.Entry(dialog)
-        entry.pack(fill="x", padx=12)
-        ttk.Button(dialog, text="Submit", command=lambda: reply(entry.get())
-                   ).pack(anchor="e", padx=12, pady=7)
-        dialog.bind("<Return>", lambda _event: reply(entry.get()))
-        dialog.bind("<Escape>", lambda _event: reply(""))
-        dialog.protocol("WM_DELETE_WINDOW", lambda: reply(""))
-        entry.focus_set()
+    def submit_console_input(self, _event):
+        if INPUT_START not in self.console.mark_names():
+            return None
+        if self.run_eof or self.run.process.poll() is not None:
+            self.end_console_input()
+            return None
+        value = self.console.get(INPUT_START, "end-1c")
+        self.end_console_input()
+        self.console.append_transcript("\n")
+        self.console.mark_set("insert", "end-1c")
+        self.console.see("insert")
+        self.run.replies.put(value)
+        return "break"
 
-    def style_input_dialog(self):
-        self.input_dialog.configure(bg=self.palette.surface)
-        self.input_label.configure(bg=self.palette.surface, fg=self.palette.ink)
-
-    def close_input_dialog(self):
-        if self.input_dialog is not None:
-            dialog, self.input_dialog = self.input_dialog, None
-            self.input_label = None
-            dialog.destroy()
+    def end_console_input(self):
+        self.console.mark_unset(INPUT_START)
+        self.input_hint.grid_remove()
 
     def destroy(self):
         if self.run_job is not None:
@@ -623,7 +615,6 @@ class InterpreterApp(ctk.CTk):
                 self.run.process.wait(timeout=0.5)
             except TimeoutExpired:
                 pass
-        self.close_input_dialog()
         super().destroy()
 
 
