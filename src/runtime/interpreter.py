@@ -68,9 +68,6 @@ class Interpreter:
         # delegate block execution to executor module
         self.executor.execute_block(statements, env)
 
-    def _exec_block(self, statements: list[Any], env: Environment) -> None:
-        self.exec_block(statements, env)
-
     def exec_stmt(self, stmt: Any, env: Environment) -> None:
         # delegate single statment execution to executor module
         self.executor.execute(stmt, env)
