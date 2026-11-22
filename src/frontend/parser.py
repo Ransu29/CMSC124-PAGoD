@@ -11,6 +11,7 @@ from typing import Any
 
 from core.ast_nodes import *
 from core.errors import SyntaxError
+from core.debug import log
 from core.tokens import T, Token
 
 
@@ -162,6 +163,7 @@ class Parser:
     def __init__(self, tokens: list[Token]):
         self.tokens = tokens
         self.current = 0
+        self._block_depth = 0
 
         # single-keyword statement dispatch table
         self._statement_parsers = {
@@ -202,6 +204,7 @@ class Parser:
         # require current token to be token_type or halt with a clear SyntaxError
         tok = self.peek()
         if tok.type != token_type:
+            log('PARSER', f'line {tok.line}: expected {token_type.name}, got {tok.type.name} {tok.value!r} -> {error_message}', self._block_depth)
             raise SyntaxError(f"{error_message} (got '{tok.value}')", tok.line)
         self.current += 1
         return tok
@@ -402,12 +405,18 @@ class Parser:
         body = []
         block_end_tokens = stop_tokens + (T.KTHXBYE, T.EOF)
         self.skip_newlines()
-
-        while self.peek().type not in block_end_tokens:
-            if self.check(T.FUNCTION_START):
-                raise SyntaxError("Function declarations are only allowed at the top level", self.peek().line)
-            body.append(self.parse_statement())
-            self._finish_statement(block_end_tokens, "Expected newline or comma after statement")
+        self._block_depth += 1
+        stops = [t.name for t in stop_tokens]
+        log('PARSER', f'block start, depth {self._block_depth}, stops at {stops}', self._block_depth)
+        try:
+            while self.peek().type not in block_end_tokens:
+                if self.check(T.FUNCTION_START):
+                    raise SyntaxError("Function declarations are only allowed at the top level", self.peek().line)
+                body.append(self.parse_statement())
+                self._finish_statement(block_end_tokens, "Expected newline or comma after statement")
+        finally:
+            log('PARSER', f'block end: {len(body)} statement(s)', self._block_depth)
+            self._block_depth -= 1
 
         return body
 
@@ -518,6 +527,7 @@ class Parser:
     def parse_statement(self) -> Any:
         self.skip_newlines()
         tok = self.peek()
+        log('PARSER', f'line {tok.line}: statement starts with {tok.type.name} {tok.value!r}', self._block_depth)
 
         # WAZZUP is only valid immediately after HAI, never inside the body
         if tok.type == T.WAZZUP:
