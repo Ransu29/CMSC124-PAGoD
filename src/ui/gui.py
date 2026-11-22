@@ -6,6 +6,7 @@
 
 import os
 import tkinter.filedialog as filedialog
+import tkinter.messagebox as messagebox
 import tkinter.ttk as ttk
 import customtkinter as ctk
 from core.errors import LexicalError, LolRuntimeError, SemanticError, SyntaxError
@@ -109,6 +110,14 @@ class InterpreterApp(ctk.CTk):
             fg_color="transparent",
         )
         self.tabs_scrollable.grid(row=0, column=0, sticky="ew", padx=(2, 0), pady=1)
+
+        # bind mousewheel and trackpad gestures across tabs bar for horizontal scrolling
+        self.tabs_bar.bind("<MouseWheel>", self.on_tabs_mousewheel)
+        self.tabs_scrollable.bind("<MouseWheel>", self.on_tabs_mousewheel)
+        self.tabs_scrollable._parent_canvas.bind("<MouseWheel>", self.on_tabs_mousewheel)
+        self.tabs_bar.bind("<Shift-MouseWheel>", self.on_tabs_mousewheel)
+        self.tabs_scrollable.bind("<Shift-MouseWheel>", self.on_tabs_mousewheel)
+        self.tabs_scrollable._parent_canvas.bind("<Shift-MouseWheel>", self.on_tabs_mousewheel)
 
         # add new tab plus button pinned to right
         self.add_tab_btn = ctk.CTkButton(
@@ -234,6 +243,24 @@ class InterpreterApp(ctk.CTk):
                 return tab
         return None
 
+    def format_tab_name(self, name: str, max_chars: int = 16) -> str:
+        # truncate long filenames with ellipsis to preserve tab bar width
+        if len(name) <= max_chars:
+            return name
+        base, ext = os.path.splitext(name)
+        if ext:
+            ext_clean = ext.lstrip(".")
+            base_limit = max(4, max_chars - len(ext_clean) - 4)
+            return f"{base[:base_limit]}...{ext_clean}"
+        return f"{name[:max_chars - 3]}..."
+
+    def on_tabs_mousewheel(self, event):
+        # scroll horizontal tabs using mousewheel or two finger trackpad gesture
+        if event.delta:
+            scroll_units = int(-1 * (event.delta / 40))
+            self.tabs_scrollable._parent_canvas.xview_scroll(scroll_units, "units")
+            return "break"
+
     def update_editor_visibility(self):
         # toggle between empty state placeholder and active editor tabs view
         if not self.tabs:
@@ -307,8 +334,33 @@ class InterpreterApp(ctk.CTk):
                 tab_to_close = tab
                 break
 
-        if tab_to_close is not None:
-            self.tabs.remove(tab_to_close)
+        if tab_to_close is None:
+            return
+
+        # check if active tab buffer has newer text
+        if tab_to_close["id"] == self.active_tab_id and self.editor.cget("state") == "normal":
+            current_text = self.editor.get("1.0", "end-1c")
+            tab_to_close["current_content"] = current_text
+            tab_to_close["is_dirty"] = (current_text != tab_to_close["saved_content"])
+
+        # prompt user for confirmation if document has unsaved modifications
+        if tab_to_close["is_dirty"]:
+            self.switch_tab(tab_to_close["id"])
+            choice = messagebox.askyesnocancel(
+                title="Unsaved Changes",
+                message=f"Do you want to save changes to '{tab_to_close['name']}' before closing?",
+            )
+            if choice is None:
+                # cancel clicked, abort tab closing
+                return
+            if choice is True:
+                # save clicked, write changes before closing
+                saved = self.save_file()
+                if not saved or tab_to_close["is_dirty"]:
+                    # save was cancelled, abort tab closing
+                    return
+
+        self.tabs.remove(tab_to_close)
 
         # if no tabs remain open, clear editor and reset counter
         if not self.tabs:
@@ -342,9 +394,10 @@ class InterpreterApp(ctk.CTk):
             pill = ctk.CTkFrame(self.tabs_scrollable, fg_color=pill_color, corner_radius=6)
             pill.pack(side="left", padx=2, pady=2)
 
-            # label displaying filename with unsaved circle marker if dirty
+            # label displaying truncated filename with unsaved circle marker if dirty
             marker = "● " if tab["is_dirty"] else ""
-            label_text = f"{marker}{tab['name']}"
+            display_name = self.format_tab_name(tab["name"])
+            label_text = f"{marker}{display_name}"
             tab_label = ctk.CTkLabel(pill, text=label_text, font=("Arial", 11, "bold" if is_active else "normal"))
             tab_label.pack(side="left", padx=(6, 2))
             tab_label.bind("<Button-1>", lambda e, tid=tab["id"]: self.switch_tab(tid))
@@ -362,6 +415,11 @@ class InterpreterApp(ctk.CTk):
                 command=lambda tid=tab["id"]: self.close_tab(tid),
             )
             close_btn.pack(side="left", padx=(0, 4))
+
+            # bind mousewheel to tab pill and elements for smooth trackpad scrolling
+            pill.bind("<MouseWheel>", self.on_tabs_mousewheel)
+            tab_label.bind("<MouseWheel>", self.on_tabs_mousewheel)
+            close_btn.bind("<MouseWheel>", self.on_tabs_mousewheel)
 
     def on_text_modified(self, event=None):
         # detect text modifications and update unsaved circle marker
@@ -387,8 +445,16 @@ class InterpreterApp(ctk.CTk):
 
     def open_file(self, event=None):
         # prompt user to select lolcode file from disk
-        file_path = filedialog.askopenfilename(filetypes=[("LOLCode files", "*.lol"), ("All files", "*.*")])
+        file_path = filedialog.askopenfilename(filetypes=[("LOLCode files", "*.lol")])
         if not file_path:
+            return "break"
+
+        # restrict opened files strictly to lol extension
+        if not file_path.lower().endswith(".lol"):
+            messagebox.showerror(
+                title="Invalid File Type",
+                message="Only LOLCode files (.lol) are supported by LOLTERPRETER.",
+            )
             return "break"
 
         # if file is already open in a tab, switch directly to that tab
@@ -409,7 +475,7 @@ class InterpreterApp(ctk.CTk):
         # save active tab to disk or prompt save as if untitled
         active_tab = self.get_active_tab()
         if active_tab is None:
-            return "break"
+            return False
 
         if active_tab["path"] is None:
             return self.save_as_file()
@@ -423,20 +489,25 @@ class InterpreterApp(ctk.CTk):
         active_tab["is_dirty"] = False
         self.file_label.configure(text=active_tab["path"])
         self.render_tabs()
-        return "break"
+        return True
 
     def save_as_file(self, event=None):
         # prompt user for target file path and save editor text
         active_tab = self.get_active_tab()
         if active_tab is None:
-            return "break"
+            return False
 
         file_path = filedialog.asksaveasfilename(
             defaultextension=".lol",
-            filetypes=[("LOLCode files", "*.lol"), ("All files", "*.*")],
+            filetypes=[("LOLCode files", "*.lol")],
         )
         if not file_path:
-            return "break"
+            return False
+
+        # sanitize extension to strictly lol
+        base, ext = os.path.splitext(file_path)
+        if ext.lower() != ".lol":
+            file_path = f"{base}.lol"
 
         content = self.editor.get("1.0", "end-1c")
         with open(file_path, "w", encoding="utf-8") as file:
@@ -450,7 +521,7 @@ class InterpreterApp(ctk.CTk):
         active_tab["is_dirty"] = False
         self.file_label.configure(text=file_path)
         self.render_tabs()
-        return "break"
+        return True
 
     # fucntion to build middle tokens table and right symbol table
     def create_tables_panel(self):
