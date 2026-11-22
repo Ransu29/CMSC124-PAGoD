@@ -42,6 +42,12 @@ ARITHMETIC_OPS = {
 BOOLEAN_BINARY_OPS = {"BOTH OF", "EITHER OF", "WON OF"}
 
 
+def _trunc_div(a: int, b: int) -> int:
+    #exact integer division truncating toward zero; int(a / b) loses precision on big ints
+    q = abs(a) // abs(b)
+    return q if (a < 0) == (b < 0) else -q
+
+
 class Evaluator:
     # evaluates expressions, arithmetic, boolean operations, and function calls
     def __init__(self, runtime: Any = None):
@@ -149,14 +155,22 @@ class Evaluator:
         r_num = coerce_numeric(right, line)
 
         use_float = l_num.type_name == "NUMBAR" or r_num.type_name == "NUMBAR"
-        if use_float:
-            a = float(l_num.value)
-            b = float(r_num.value)
-        else:
-            a = int(l_num.value)
-            b = int(r_num.value)
+        kind = "NUMBAR" if use_float else "NUMBR"
+        try:
+            if use_float:
+                a, b = float(l_num.value), float(r_num.value)
+            else:
+                a, b = int(l_num.value), int(r_num.value)
+        except OverflowError:
+            raise LolRuntimeError("Number is too large to convert to NUMBAR", line) from None
+        log('ARITH', f'line {line}: {op} {a!r} AN {b!r} as {kind}')
 
-        # calculate arithmetic results
+        #b == 0 is also True for 0.0 and -0.0, so float zero division is caught here
+        if op in ("QUOSHUNT OF", "MOD OF") and b == 0:
+            word = "Division" if op == "QUOSHUNT OF" else "Modulo"
+            log('ARITH', f'{word} by zero blocked (divisor={b!r})')
+            raise LolRuntimeError(f"{word} by zero", line)
+
         if op == "SUM OF":
             res = a + b
         elif op == "DIFF OF":
@@ -164,21 +178,10 @@ class Evaluator:
         elif op == "PRODUKT OF":
             res = a * b
         elif op == "QUOSHUNT OF":
-            if b == 0:
-                raise LolRuntimeError("Division by zero", line)
-            if use_float:
-                res = a / b
-            else:
-                # truncating integer quotient for two integer operands
-                res = int(a / b)
+            res = a / b if use_float else _trunc_div(a, b)
         elif op == "MOD OF":
-            if b == 0:
-                raise LolRuntimeError("Modulo by zero", line)
-            if use_float:
-                res = a % b
-            else:
-                # truncating remainder matching integer quoshunt of behavior
-                res = a - int(a / b) * b
+            #fmod keeps the dividend's sign, matching the integer branch
+            res = math.fmod(a, b) if use_float else a - _trunc_div(a, b) * b
         elif op == "BIGGR OF":
             res = a if a >= b else b
         elif op == "SMALLR OF":
@@ -186,9 +189,11 @@ class Evaluator:
         else:
             raise LolRuntimeError(f"Unknown arithmetic operator '{op}'", line)
 
-        if use_float:
-            return LolValue("NUMBAR", res)
-        return LolValue("NUMBR", res)
+        if use_float and not math.isfinite(res):
+            log('ARITH', f'non-finite result {res!r} blocked')
+            raise LolRuntimeError("Arithmetic overflow: result is not a finite number", line)
+        log('ARITH', f'  = {res!r}')
+        return LolValue(kind, res)
 
     def _eval_infinite_bool(self, expr: InfiniteBoolExpr, env: Environment) -> LolValue:
         # evaluate all of with short circuiting on first fail
