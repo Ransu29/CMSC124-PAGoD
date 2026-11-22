@@ -62,6 +62,7 @@ class InterpreterApp(ctk.CTk):
         style.map("Treeview", background=[("selected", "#1f6aa5")])
 
     # fucntion to build left editor panel widgets
+    # fucntion to build left editor panel widgets
     def create_editor_panel(self):
         self.editor_frame = ctk.CTkFrame(self)  # container for editor column
         self.editor_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
@@ -76,9 +77,51 @@ class InterpreterApp(ctk.CTk):
         self.file_label = ctk.CTkLabel(self.editor_frame, text="No file selected")  # file status label
         self.file_label.grid(row=1, column=0, sticky="w", padx=5, pady=2)
 
-        # multi line text editor for lolcode source code
-        self.editor = ctk.CTkTextbox(self.editor_frame, font=("Courier", 13))  # code editor area
+        # multi line text editor with native undo redo enabled
+        self.editor = ctk.CTkTextbox(self.editor_frame, font=("Courier", 13), undo=True)  # code editor area
         self.editor.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
+
+        # bind tab and indentation keys
+        self.editor.bind("<Tab>", self.insert_tab_spaces)
+        self.editor.bind("<Shift-Tab>", self.unindent_tab_spaces)
+
+        # bind undo and redo keyboard shortcuts
+        self.editor.bind("<Control-z>", self.safe_undo)
+        self.editor.bind("<Control-y>", self.safe_redo)
+        self.editor.bind("<Control-Z>", self.safe_redo)
+
+    def insert_tab_spaces(self, event=None):
+        # insert four spaces for consistent indentation
+        self.editor.insert("insert", "    ")
+        return "break"
+
+    def unindent_tab_spaces(self, event=None):
+        # remove up to four leading spaces on current line
+        cursor_pos = self.editor.index("insert")
+        line_num = cursor_pos.split(".")[0]
+        line_start = f"{line_num}.0"
+        line_text = self.editor.get(line_start, f"{line_num}.end")
+        spaces_to_remove = len(line_text) - len(line_text.lstrip(" "))
+        remove_count = min(spaces_to_remove, 4)
+        if remove_count > 0:
+            self.editor.delete(line_start, f"{line_num}.{remove_count}")
+        return "break"
+
+    def safe_undo(self, event=None):
+        # handle undo action safely without crashing on empty stack
+        try:
+            self.editor._textbox.edit_undo()
+        except Exception:
+            pass
+        return "break"
+
+    def safe_redo(self, event=None):
+        # handle redo action safely without crashing on empty stack
+        try:
+            self.editor._textbox.edit_redo()
+        except Exception:
+            pass
+        return "break"
 
     # fucntion to build middle tokens table and right symbol table
     def create_tables_panel(self):
