@@ -14,10 +14,10 @@ examples_dir = base_dir / "examples"
 if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
-from controller import InterpreterController, format_lol_value
-from errors import LexicalError, LolRuntimeError, SemanticError, SyntaxError
-from lol_types import NOOB_VAL, LolValue
-from tokens import T
+from core.errors import LexicalError, LolRuntimeError, SemanticError, SyntaxError
+from core.tokens import T
+from semantics.lol_types import NOOB_VAL, LolValue
+from ui.controller import InterpreterController, format_lol_value
 
 
 class TestFormatLolValue(unittest.TestCase):
@@ -176,15 +176,16 @@ class TestGuiIntegration(unittest.TestCase):
 
         saved = {
             name: sys.modules.get(name)
-            for name in ("tkinter", "tkinter.filedialog", "tkinter.ttk", "customtkinter", "gui")
+            for name in ("tkinter", "tkinter.filedialog", "tkinter.ttk", "customtkinter", "ui.gui", "gui")
         }
         sys.modules["tkinter"] = fake_tk
         sys.modules["tkinter.filedialog"] = fake_fd
         sys.modules["tkinter.ttk"] = fake_ttk
         sys.modules["customtkinter"] = fake_ctk
+        sys.modules.pop("ui.gui", None)
         sys.modules.pop("gui", None)
 
-        gui_mod = importlib.import_module("gui")
+        gui_mod = importlib.import_module("ui.gui")
         return gui_mod, saved
 
     def _restore_modules(self, saved):

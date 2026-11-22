@@ -3,11 +3,10 @@
 # - semantic analysis and symbol tables: https://www.cs.cornell.edu/courses/cs4120/2023sp/notes/semantic/
 
 from typing import Any
-from ast_nodes import *
-from errors import SemanticError
-from parser import Program
-
-VALID_TYPES = ("NOOB", "NUMBR", "NUMBAR", "YARN", "TROOF") # valid lolcode type names
+from core.ast_nodes import *
+from core.errors import SemanticError
+from frontend.parser import Program
+from semantics.lol_types import VALID_TYPES
 
 class SemanticAnalyzer:
     # validates delcarations, variable scope, fucntion arity, and flow control

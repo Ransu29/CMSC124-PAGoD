@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
-from errors import LolRuntimeError
+from core.errors import LolRuntimeError
 
 VALID_TYPES = {"NOOB", "NUMBR", "NUMBAR", "YARN", "TROOF"}
 

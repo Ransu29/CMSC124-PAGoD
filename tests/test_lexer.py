@@ -14,8 +14,8 @@ examples_dir = base_dir / "examples"
 if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
-from tokens import T
-from lexer import tokenize
+from core.tokens import T
+from frontend.lexer import tokenize
 
 def read_source_file(file_path: Path) -> str:
     # read lolcode file using utf-8 encoding

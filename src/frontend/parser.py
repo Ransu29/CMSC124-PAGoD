@@ -9,9 +9,9 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from ast_nodes import *
-from errors import SyntaxError
-from tokens import T, Token
+from core.ast_nodes import *
+from core.errors import SyntaxError
+from core.tokens import T, Token
 
 
 # Token Groups Used by the Parser

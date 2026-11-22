@@ -2,13 +2,12 @@
 
 from typing import Callable
 
-import lexer
-import parser
-from errors import LexicalError, LolcodeError
-from interpreter import Interpreter
-from lol_types import LolValue
-from semantic_analyzer import SemanticAnalyzer
-from tokens import T, Token
+from core.errors import LexicalError, LolcodeError
+from core.tokens import T, Token
+from frontend import lexer, parser
+from runtime.interpreter import Interpreter
+from semantics.lol_types import LolValue
+from semantics.semantic_analyzer import SemanticAnalyzer
 
 
 def format_lol_value(lol_val: LolValue) -> str:
