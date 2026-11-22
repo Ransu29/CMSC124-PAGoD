@@ -28,6 +28,7 @@ from core.ast_nodes import (
     VariableRef,
 )
 from core.errors import LolRuntimeError
+from runtime.environment import Environment, _BreakSignal, _ReturnSignal
 from frontend.parser import Program
 from semantics.lol_types import (
     NOOB_VAL,
@@ -53,59 +54,6 @@ ARITHMETIC_OPS = {
 }
 
 BOOLEAN_BINARY_OPS = {"BOTH OF", "EITHER OF", "WON OF"}
-
-
-# internal control-flow signals (never exposed outside interpreter)
-class _BreakSignal(Exception):
-    pass
-
-
-class _ReturnSignal(Exception):
-    def __init__(self, value: LolValue):
-        self.value = value
-
-
-class Environment:
-    # symbol table holding variable -> LolValue bindings and implicit IT for one scope
-
-    def __init__(self, parent: "Environment | None" = None):
-        self.parent = parent
-        self.bindings: dict[str, LolValue] = {"IT": NOOB_VAL}
-
-    def declare(self, name: str, value: LolValue = NOOB_VAL, line: int = 0) -> None:
-        if name == "IT":
-            raise LolRuntimeError("Cannot declare reserved implicit variable 'IT'", line)
-        if name in self.bindings:
-            raise LolRuntimeError(f"Variable '{name}' is already declared", line)
-        self.bindings[name] = value
-
-    def assign(self, name: str, value: LolValue, line: int = 0) -> None:
-        env: Environment | None = self
-        while env is not None:
-            if name in env.bindings:
-                env.bindings[name] = value
-                return
-            env = env.parent
-        raise LolRuntimeError(f"Variable '{name}' is not declared", line)
-
-    def lookup(self, name: str, line: int = 0) -> LolValue:
-        env: Environment | None = self
-        while env is not None:
-            if name in env.bindings:
-                return env.bindings[name]
-            env = env.parent
-        raise LolRuntimeError(f"Variable '{name}' is not declared", line)
-
-    def get_it(self) -> LolValue:
-        return self.bindings["IT"]
-
-    def set_it(self, value: LolValue) -> None:
-        self.bindings["IT"] = value
-
-    def snapshot(self) -> dict[str, LolValue]:
-        # return a copy of current scope bindings for UI/test inspection
-        return dict(self.bindings)
-
 
 def _default_output(text: str) -> None:
     print(text, end="")
